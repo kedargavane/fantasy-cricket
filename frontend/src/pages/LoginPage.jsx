@@ -33,7 +33,7 @@ export default function LoginPage() {
       <div className="auth-container fade-up">
         <div className="auth-logo">
           <span className="auth-logo-icon">🏏</span>
-          <h1 className="auth-brand">FANTASY<br />CRICKET</h1>
+          <h1 className="auth-brand">GYARAH<br />SAPNE</h1>
         </div>
 
         <div className="auth-card">

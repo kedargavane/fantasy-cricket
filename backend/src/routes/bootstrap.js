@@ -8,38 +8,37 @@ const router = express.Router();
 
 /**
  * POST /api/bootstrap
- * One-time seed endpoint. Creates admin user + season + test data.
- * Disables itself permanently after first successful call.
- * Protected by a secret key passed as ?key=... query param.
+ * One-time setup — creates admin + season + BAN vs PAK match.
+ * Safe to call multiple times — skips if already done.
  */
 router.post('/', (req, res) => {
   const db = getDb();
 
-  // Check if already bootstrapped
   const alreadyDone = db.prepare(
     "SELECT id FROM users WHERE email = 'admin@test.com'"
   ).get();
 
   if (alreadyDone) {
-    return res.status(400).json({ error: 'Already bootstrapped. Use existing credentials.' });
+    return res.status(400).json({
+      error: 'Already bootstrapped.',
+      hint: 'Use POST /api/bootstrap/reset to clear all data first.',
+      credentials: { email: 'admin@test.com', password: 'password123' }
+    });
   }
 
-  // Optional secret key protection (set BOOTSTRAP_KEY env var)
   const secretKey = process.env.BOOTSTRAP_KEY;
   if (secretKey && req.query.key !== secretKey) {
     return res.status(403).json({ error: 'Invalid bootstrap key' });
   }
 
   try {
-    const bootstrap = db.transaction(() => {
-      // 1. Create admin user
-      const hash = bcrypt.hashSync('password123', 10);
-      const adminResult = db.prepare(
-        'INSERT INTO users (name, email, password_hash, is_admin) VALUES (?,?,?,1)'
-      ).run('Admin', 'admin@test.com', hash);
-      const adminId = adminResult.lastInsertRowid;
+    const result = db.transaction(() => {
+      // Admin user
+      const hash    = bcrypt.hashSync('password123', 10);
+      const adminId = db.prepare('INSERT INTO users (name,email,password_hash,is_admin) VALUES (?,?,?,1)')
+        .run('Admin', 'admin@test.com', hash).lastInsertRowid;
 
-      // 2. Create test users
+      // Test users
       const testUsers = [
         { name: 'Rahul',   email: 'rahul@test.com' },
         { name: 'Priya',   email: 'priya@test.com' },
@@ -48,66 +47,93 @@ router.post('/', (req, res) => {
       ];
       const userIds = { 'admin@test.com': adminId };
       for (const u of testUsers) {
-        const r = db.prepare(
-          'INSERT INTO users (name, email, password_hash, is_admin) VALUES (?,?,?,0)'
-        ).run(u.name, u.email, bcrypt.hashSync('password123', 10));
+        const r = db.prepare('INSERT INTO users (name,email,password_hash,is_admin) VALUES (?,?,?,0)')
+          .run(u.name, u.email, bcrypt.hashSync('password123', 10));
         userIds[u.email] = r.lastInsertRowid;
       }
 
-      // 3. Create season
-      const seasonResult = db.prepare(`
-        INSERT INTO seasons (name, year, status, invite_code, admin_user_id, max_players, series_ids)
+      // Season
+      const seasonId = db.prepare(`
+        INSERT INTO seasons (name,year,status,invite_code,admin_user_id,max_players,series_ids)
         VALUES (?,?,?,?,?,?,?)
-      `).run('LLC 2026 Test League', 2026, 'active', 'LLC2026', adminId, 20, '[]');
-      const seasonId = seasonResult.lastInsertRowid;
+      `).run('Gyarah Sapne — Season 1', 2026, 'active', 'GYARAH1', adminId, 20, '[]').lastInsertRowid;
 
-      // 4. Add all users to season
+      // Add all users to season
       for (const uid of Object.values(userIds)) {
-        db.prepare(
-          'INSERT INTO season_memberships (season_id, user_id) VALUES (?,?)'
-        ).run(seasonId, uid);
-        db.prepare(
-          'INSERT OR IGNORE INTO season_leaderboard (season_id, user_id) VALUES (?,?)'
-        ).run(seasonId, uid);
+        db.prepare('INSERT INTO season_memberships (season_id,user_id) VALUES (?,?)').run(seasonId, uid);
+        db.prepare('INSERT OR IGNORE INTO season_leaderboard (season_id,user_id) VALUES (?,?)').run(seasonId, uid);
       }
 
-      // 5. Create today's match (Mumbai Spartans vs India Tigers)
-      const matchResult = db.prepare(`
-        INSERT INTO matches (season_id, external_match_id, team_a, team_b, venue, match_type, status, start_time)
+      // BAN vs PAK 3rd ODI — March 15 1:45 PM IST = 08:15 UTC
+      const matchId = db.prepare(`
+        INSERT INTO matches (season_id,external_match_id,team_a,team_b,venue,match_type,status,start_time)
         VALUES (?,?,?,?,?,?,?,?)
       `).run(
         seasonId,
-        '106f2025-7660-4a5f-aa6e-8ab8a3a62124',
-        'Mumbai Spartans',
-        'India Tigers',
-        'Indira Gandhi International Cricket Stadium, Haldwani',
-        't20',
-        'upcoming',
-        '2026-03-14T14:00:00.000Z'
-      );
-      const matchId = matchResult.lastInsertRowid;
-      db.prepare('INSERT INTO match_config (match_id, entry_units) VALUES (?,?)').run(matchId, 300);
+        'f3a4648e-3f13-4070-83ae-d74b6f62f4de',
+        'Bangladesh', 'Pakistan',
+        'Shere Bangla National Stadium, Mirpur, Dhaka',
+        'odi', 'upcoming',
+        '2026-03-15T08:15:00.000Z'
+      ).lastInsertRowid;
 
-      return { adminId, seasonId, matchId, inviteCode: 'LLC2026' };
-    });
+      db.prepare('INSERT INTO match_config (match_id,entry_units) VALUES (?,?)').run(matchId, 300);
 
-    const result = bootstrap();
+      return { adminId, seasonId, matchId, inviteCode: 'GYARAH1' };
+    })();
 
     return res.json({
-      message: 'Bootstrap successful!',
-      season: 'LLC 2026 Test League',
+      message: 'Bootstrap successful! Welcome to Gyarah Sapne 🏏',
+      season:     'Gyarah Sapne — Season 1',
       inviteCode: result.inviteCode,
-      matchId: result.matchId,
+      match:      'Bangladesh vs Pakistan 3rd ODI — Mar 15, 1:45 PM IST',
+      matchId:    result.matchId,
       credentials: {
-        admin:   { email: 'admin@test.com',   password: 'password123' },
-        users:   ['rahul@test.com', 'priya@test.com', 'karthik@test.com', 'sneha@test.com'],
+        admin: { email: 'admin@test.com', password: 'password123' },
+        users: ['rahul@test.com', 'priya@test.com', 'karthik@test.com', 'sneha@test.com'],
         password: 'password123 (all users)'
-      },
-      next: 'Login at /login with admin@test.com / password123'
+      }
     });
-
   } catch (err) {
     console.error('[bootstrap]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/bootstrap/reset
+ * Wipes ALL data and re-runs bootstrap.
+ * Protected by BOOTSTRAP_KEY env var if set.
+ */
+router.post('/reset', (req, res) => {
+  const secretKey = process.env.BOOTSTRAP_KEY;
+  if (secretKey && req.query.key !== secretKey) {
+    return res.status(403).json({ error: 'Invalid bootstrap key' });
+  }
+
+  const db = getDb();
+
+  try {
+    // Clear all tables in dependency order
+    const tables = [
+      'prize_distributions', 'match_prize_pools',
+      'user_team_swaps', 'user_team_players', 'user_teams',
+      'player_match_stats', 'match_squads', 'match_config', 'matches',
+      'season_leaderboard', 'season_memberships', 'seasons',
+      'push_subscriptions', 'players', 'users',
+    ];
+
+    db.transaction(() => {
+      for (const t of tables) {
+        db.prepare(`DELETE FROM ${t}`).run();
+        // Reset autoincrement
+        try { db.prepare(`DELETE FROM sqlite_sequence WHERE name='${t}'`).run(); } catch {}
+      }
+    })();
+
+    console.log('[bootstrap/reset] All data cleared');
+    return res.json({ message: 'All data cleared. Now call POST /api/bootstrap to set up fresh.' });
+  } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
