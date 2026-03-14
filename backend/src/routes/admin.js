@@ -173,8 +173,8 @@ router.post('/matches/:id/squad', (req, res) => {
   }
 
   const playingXiCount = players.filter(p => p.isPlayingXi).length;
-  if (playingXiCount > 12) {
-    return res.status(400).json({ error: 'Cannot have more than 12 playing XI players' });
+  if (playingXiCount > 22) {
+    return res.status(400).json({ error: 'Cannot have more than 22 playing XI players (11 per team)' });
   }
 
   upsertSquad(matchId, players);
@@ -571,3 +571,47 @@ function generateInviteCode() {
 }
 
 module.exports = router;
+
+// ── POST /api/admin/matches/:id/teams ─────────────────────────────────────────
+// Admin creates teams for users bypassing match lock (for testing/seeding)
+router.post('/matches/:id/teams', (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const { userId, playerIds, captainId, viceCaptainId, backupIds } = req.body;
+
+  if (!userId || !Array.isArray(playerIds) || playerIds.length !== 11 ||
+      !Array.isArray(backupIds) || backupIds.length !== 2 ||
+      !captainId || !viceCaptainId) {
+    return res.status(400).json({ error: 'userId, 11 playerIds, captainId, viceCaptainId, 2 backupIds required' });
+  }
+
+  // Remove existing team if any
+  const existing = db.prepare('SELECT id FROM user_teams WHERE user_id=? AND match_id=?').get(userId, matchId);
+  if (existing) {
+    db.prepare('DELETE FROM user_team_players WHERE user_team_id=?').run(existing.id);
+    db.prepare('DELETE FROM user_teams WHERE id=?').run(existing.id);
+  }
+
+  const saveTeam = db.transaction(() => {
+    const result = db.prepare(`
+      INSERT INTO user_teams (user_id, match_id, captain_id, vice_captain_id,
+        resolved_captain_id, resolved_vice_captain_id, locked_at, swap_processed_at)
+      VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))
+    `).run(userId, matchId, captainId, viceCaptainId, captainId, viceCaptainId);
+
+    const utId = result.lastInsertRowid;
+    const ins  = db.prepare('INSERT INTO user_team_players (user_team_id,player_id,is_backup,backup_order) VALUES (?,?,?,?)');
+
+    for (const pid of playerIds)       ins.run(utId, pid, 0, null);
+    backupIds.forEach((pid, i) =>       ins.run(utId, pid, 1, i + 1));
+
+    return utId;
+  });
+
+  try {
+    const utId = saveTeam();
+    return res.status(201).json({ message: 'Team created', userTeamId: utId });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
