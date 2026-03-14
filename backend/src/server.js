@@ -40,6 +40,7 @@ app.use('/api/teams',       require('./routes/teams'));
 app.use('/api/leaderboard', require('./routes/leaderboard'));
 app.use('/api/admin',       require('./routes/admin'));
 app.use('/api/push',        require('./routes/push'));
+app.use('/api/bootstrap',   require('./routes/bootstrap'));
 
 // ── Socket.io ─────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
