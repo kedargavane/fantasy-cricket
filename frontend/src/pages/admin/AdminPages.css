@@ -1,0 +1,123 @@
+.admin-page { padding-top: 0; }
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) 0 var(--space-6);
+  position: sticky;
+  top: 0;
+  background: var(--bg-base);
+  z-index: 10;
+  gap: var(--space-4);
+}
+
+.admin-title {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  letter-spacing: 0.04em;
+}
+
+/* Stats grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-4);
+}
+.stat-card.stat-highlight { border-color: rgba(0,230,118,0.3); }
+.stat-value { font-family: var(--font-display); font-size: 1.75rem; letter-spacing: 0.04em; }
+.stat-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* Live banner */
+.admin-live-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0,230,118,0.08);
+  border: 1px solid rgba(0,230,118,0.3);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-6);
+  cursor: pointer;
+}
+
+/* Sections */
+.admin-section { margin-bottom: var(--space-6); }
+.admin-list-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+/* Match rows */
+.admin-match-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+}
+
+/* Create form */
+.create-match-form { padding: var(--space-5); }
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+/* Squad management */
+.admin-player-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+/* Checklist */
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.check-item:last-child { border-bottom: none; }
+
+/* Users */
+.user-stats {
+  display: flex;
+  gap: var(--space-5);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.user-stat { display: flex; flex-direction: column; gap: 2px; }
+
+/* Invite card */
+.invite-card { background: rgba(0,229,255,0.04); border-color: var(--border-strong); }
+.invite-code-display { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+
+/* Shared utility for admin pages */
+.font-bold { font-weight: 600; }
+.min-width-0 { min-width: 0; }
+
+/* Series ID chips */
+.series-id-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  margin: 3px 3px 3px 0;
+}

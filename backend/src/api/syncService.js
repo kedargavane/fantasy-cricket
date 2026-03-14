@@ -1,0 +1,373 @@
+'use strict';
+
+const { getDb }              = require('../db/database');
+const cricapi                = require('../api/cricapi');
+const { calculateFantasyPoints } = require('../engines/scoringEngine');
+const { resolveTeam }        = require('../engines/swapEngine');
+const { DEFAULT_SCORING_CONFIG } = require('../engines/scoringConfig');
+
+// ── Match sync ────────────────────────────────────────────────────────────────
+
+/**
+ * Upsert a match record from CricAPI data.
+ */
+function upsertMatch(seasonId, matchData) {
+  const db = getDb();
+
+  const existing = db.prepare(
+    'SELECT id FROM matches WHERE external_match_id = ?'
+  ).get(matchData.externalMatchId);
+
+  if (existing) {
+    db.prepare(`
+      UPDATE matches SET
+        status      = ?,
+        last_synced = datetime('now')
+      WHERE id = ?
+    `).run(matchData.status, existing.id);
+    return existing.id;
+  }
+
+  const result = db.prepare(`
+    INSERT INTO matches
+      (season_id, external_match_id, team_a, team_b, venue, match_type, status, start_time)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    seasonId,
+    matchData.externalMatchId,
+    matchData.teamA,
+    matchData.teamB,
+    matchData.venue,
+    matchData.matchType,
+    matchData.status,
+    matchData.startTime,
+  );
+
+  // Insert default match config
+  db.prepare(
+    'INSERT INTO match_config (match_id, entry_units) VALUES (?, 300)'
+  ).run(result.lastInsertRowid);
+
+  return result.lastInsertRowid;
+}
+
+// ── Squad sync ────────────────────────────────────────────────────────────────
+
+/**
+ * Upsert players and squad for a match.
+ * Marks is_playing_xi based on confirmed XI from API.
+ */
+function upsertSquad(matchId, players) {
+  const db = getDb();
+
+  const upsertPlayer = db.prepare(`
+    INSERT INTO players (name, team, role, external_player_id)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(external_player_id) DO UPDATE SET
+      name = excluded.name,
+      team = excluded.team,
+      role = excluded.role
+  `);
+
+  const upsertSquad = db.prepare(`
+    INSERT INTO match_squads (match_id, player_id, is_playing_xi)
+    VALUES (?, ?, ?)
+    ON CONFLICT(match_id, player_id) DO UPDATE SET
+      is_playing_xi = excluded.is_playing_xi
+  `);
+
+  const getPlayer = db.prepare(
+    'SELECT id FROM players WHERE external_player_id = ?'
+  );
+
+  const upsertMany = db.transaction((players) => {
+    for (const p of players) {
+      upsertPlayer.run(p.name, p.team, p.role, p.externalPlayerId);
+      const player = getPlayer.get(p.externalPlayerId);
+      upsertSquad.run(matchId, player.id, p.isPlayingXi ? 1 : 0);
+    }
+  });
+
+  upsertMany(players);
+}
+
+// ── Stats sync ────────────────────────────────────────────────────────────────
+
+/**
+ * Upsert player match stats and recompute fantasy points.
+ * Called every 60s during live matches.
+ */
+function upsertStats(matchId, playerStats) {
+  const db = getDb();
+
+  const getPlayer = db.prepare(
+    'SELECT id FROM players WHERE external_player_id = ?'
+  );
+
+  const getSquadEntry = db.prepare(
+    'SELECT is_playing_xi FROM match_squads WHERE match_id = ? AND player_id = ?'
+  );
+
+  const upsertStat = db.prepare(`
+    INSERT INTO player_match_stats
+      (match_id, player_id, runs, balls_faced, fours, sixes, dismissal_type,
+       overs_bowled, wickets, runs_conceded, maidens,
+       catches, stumpings, run_outs, fantasy_points, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(match_id, player_id) DO UPDATE SET
+      runs           = excluded.runs,
+      balls_faced    = excluded.balls_faced,
+      fours          = excluded.fours,
+      sixes          = excluded.sixes,
+      dismissal_type = excluded.dismissal_type,
+      overs_bowled   = excluded.overs_bowled,
+      wickets        = excluded.wickets,
+      runs_conceded  = excluded.runs_conceded,
+      maidens        = excluded.maidens,
+      catches        = excluded.catches,
+      stumpings      = excluded.stumpings,
+      run_outs       = excluded.run_outs,
+      fantasy_points = excluded.fantasy_points,
+      updated_at     = datetime('now')
+  `);
+
+  const doUpsert = db.transaction((playerStats) => {
+    for (const stat of playerStats) {
+      const player = getPlayer.get(stat.externalPlayerId);
+      if (!player) continue;
+
+      const squadEntry = getSquadEntry.get(matchId, player.id);
+      const isPlayingXi = squadEntry ? squadEntry.is_playing_xi === 1 : false;
+
+      // Compute fantasy points (role is 'normal' here — multipliers applied at team scoring)
+      const { total: fantasyPoints } = calculateFantasyPoints(
+        { ...stat, isPlayingXi },
+        'normal',
+        DEFAULT_SCORING_CONFIG
+      );
+
+      upsertStat.run(
+        matchId, player.id,
+        stat.runs, stat.ballsFaced, stat.fours, stat.sixes, stat.dismissalType,
+        stat.oversBowled, stat.wickets, stat.runsConceded, stat.maidens,
+        stat.catches, stat.stumpings, stat.runOuts,
+        fantasyPoints
+      );
+    }
+  });
+
+  doUpsert(playerStats);
+}
+
+// ── Auto-swap processor ───────────────────────────────────────────────────────
+
+/**
+ * Run auto-swap for all user teams in a match.
+ * Called once when match status flips to 'live'.
+ */
+function processAutoSwaps(matchId) {
+  const db = getDb();
+
+  // Get confirmed Playing XI player IDs
+  const xiPlayers = db.prepare(`
+    SELECT player_id FROM match_squads
+    WHERE match_id = ? AND is_playing_xi = 1
+  `).all(matchId);
+
+  const playingXiIds = new Set(xiPlayers.map(r => r.player_id));
+
+  // Get all user teams for this match that haven't been swap-processed
+  const userTeams = db.prepare(`
+    SELECT id, user_id, captain_id, vice_captain_id
+    FROM user_teams
+    WHERE match_id = ? AND swap_processed_at IS NULL AND locked_at IS NOT NULL
+  `).all(matchId);
+
+  const getTeamPlayers = db.prepare(`
+    SELECT p.id, p.name, utp.is_backup, utp.backup_order
+    FROM user_team_players utp
+    JOIN players p ON p.id = utp.player_id
+    WHERE utp.user_team_id = ?
+    ORDER BY utp.is_backup ASC, utp.backup_order ASC
+  `);
+
+  const updateResolved = db.prepare(`
+    UPDATE user_teams SET
+      resolved_captain_id      = ?,
+      resolved_vice_captain_id = ?,
+      swap_processed_at        = datetime('now')
+    WHERE id = ?
+  `);
+
+  const insertSwapLog = db.prepare(`
+    INSERT INTO user_team_swaps
+      (user_team_id, swapped_out_player_id, swapped_in_player_id, inherited_role)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  const processAll = db.transaction(() => {
+    for (const team of userTeams) {
+      const allPlayers = getTeamPlayers.all(team.id);
+      const mainPlayers = allPlayers.filter(p => !p.is_backup);
+      const backups     = allPlayers.filter(p => p.is_backup).sort((a, b) => a.backup_order - b.backup_order);
+
+      const resolved = resolveTeam(
+        {
+          mainPlayers,
+          backups,
+          captainId:     team.captain_id,
+          viceCaptainId: team.vice_captain_id,
+        },
+        playingXiIds
+      );
+
+      updateResolved.run(
+        resolved.captainId,
+        resolved.viceCaptainId,
+        team.id
+      );
+
+      for (const swap of resolved.swapLog) {
+        if (swap.type === 'swapped') {
+          insertSwapLog.run(
+            team.id,
+            swap.swappedOut.id,
+            swap.swappedIn.id,
+            swap.inheritedRole
+          );
+        }
+      }
+    }
+  });
+
+  processAll();
+
+  return userTeams.length;
+}
+
+// ── Team fantasy points recompute ─────────────────────────────────────────────
+
+/**
+ * Recompute total fantasy points for all user teams in a match.
+ * Called after each stats sync during live matches.
+ */
+function recomputeTeamPoints(matchId) {
+  const db = getDb();
+
+  const userTeams = db.prepare(`
+    SELECT id, resolved_captain_id, resolved_vice_captain_id, captain_id, vice_captain_id
+    FROM user_teams
+    WHERE match_id = ?
+  `).all(matchId);
+
+  const getPlayerStats = db.prepare(`
+    SELECT pms.* FROM player_match_stats pms
+    WHERE pms.match_id = ? AND pms.player_id = ?
+  `);
+
+  const getTeamPlayers = db.prepare(`
+    SELECT utp.player_id, utp.is_backup
+    FROM user_team_players utp
+    WHERE utp.user_team_id = ? AND utp.is_backup = 0
+  `);
+
+  const getSquadEntry = db.prepare(
+    'SELECT is_playing_xi FROM match_squads WHERE match_id = ? AND player_id = ?'
+  );
+
+  const updateTeamPoints = db.prepare(
+    'UPDATE user_teams SET total_fantasy_points = ? WHERE id = ?'
+  );
+
+  const recomputeAll = db.transaction(() => {
+    for (const team of userTeams) {
+      const captainId    = team.resolved_captain_id     || team.captain_id;
+      const vcId         = team.resolved_vice_captain_id || team.vice_captain_id;
+      const players      = getTeamPlayers.all(team.id);
+
+      let totalPoints = 0;
+
+      for (const { player_id } of players) {
+        const stats = getPlayerStats.get(matchId, player_id);
+        if (!stats) continue;
+
+        const squadEntry  = getSquadEntry.get(matchId, player_id);
+        const isPlayingXi = squadEntry ? squadEntry.is_playing_xi === 1 : false;
+
+        const role =
+          player_id === captainId ? 'captain'      :
+          player_id === vcId      ? 'vice_captain' :
+          'normal';
+
+        const { total } = calculateFantasyPoints(
+          {
+            isPlayingXi,
+            runs:          stats.runs,
+            ballsFaced:    stats.balls_faced,
+            fours:         stats.fours,
+            sixes:         stats.sixes,
+            dismissalType: stats.dismissal_type,
+            oversBowled:   stats.overs_bowled,
+            wickets:       stats.wickets,
+            runsConceded:  stats.runs_conceded,
+            maidens:       stats.maidens,
+            catches:       stats.catches,
+            stumpings:     stats.stumpings,
+            runOuts:       stats.run_outs,
+          },
+          role,
+          DEFAULT_SCORING_CONFIG
+        );
+
+        totalPoints += total;
+      }
+
+      updateTeamPoints.run(totalPoints, team.id);
+    }
+  });
+
+  recomputeAll();
+}
+
+// ── Full live sync (called by cron) ───────────────────────────────────────────
+
+/**
+ * Full sync cycle for a single live match.
+ * 1. Fetch scorecard from API
+ * 2. Upsert stats
+ * 3. Recompute team points
+ * 4. Update match status
+ */
+async function syncLiveMatch(matchId, externalMatchId) {
+  const db = getDb();
+
+  try {
+    const { matchInfo, playerStats } = await cricapi.fetchMatchScorecard(externalMatchId);
+
+    // Upsert stats
+    upsertStats(matchId, playerStats);
+
+    // Recompute all team points
+    recomputeTeamPoints(matchId);
+
+    // Update match status and last_synced
+    const newStatus = matchInfo.matchEnded ? 'completed' : 'live';
+    db.prepare(`
+      UPDATE matches SET status = ?, last_synced = datetime('now') WHERE id = ?
+    `).run(newStatus, matchId);
+
+    return { success: true, status: newStatus, playersUpdated: playerStats.length };
+  } catch (err) {
+    console.error(`[syncLiveMatch] matchId=${matchId} error:`, err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+module.exports = {
+  upsertMatch,
+  upsertSquad,
+  upsertStats,
+  processAutoSwaps,
+  recomputeTeamPoints,
+  syncLiveMatch,
+};

@@ -1,0 +1,112 @@
+.live-page { padding-top: 0; }
+
+.live-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(12px);
+}
+
+.live-header-center { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.live-header-title  { font-size: 0.9375rem; font-weight: 500; }
+.live-updated       { font-size: 0.75rem; }
+
+/* My team summary */
+.my-team-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.my-team-total { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.total-pts { font-family: var(--font-display); font-size: 2.5rem; letter-spacing: 0.04em; color: var(--accent-primary); }
+
+.my-team-rank { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.rank-num { font-family: var(--font-display); font-size: 2rem; letter-spacing: 0.04em; color: var(--accent-gold); }
+
+/* Swap notice */
+.swap-notice {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  background: rgba(255,215,0,0.08);
+  border: 1px solid rgba(255,215,0,0.2);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+.swap-icon { font-size: 1.25rem; }
+.swap-title { font-weight: 600; font-size: 0.875rem; color: var(--accent-gold); }
+
+/* Player score rows */
+.player-score-list { display: flex; flex-direction: column; }
+
+.player-score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.player-score-row:last-child { border-bottom: none; }
+.player-score-row.backup-row { opacity: 0.7; }
+.player-score-row.not-playing { opacity: 0.45; }
+
+.psr-left { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; }
+.psr-right { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+
+.role-badge {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.captain-badge { background: rgba(124,77,255,0.25); color: var(--accent-purple); }
+.vc-badge      { background: rgba(0,229,255,0.2);  color: var(--accent-primary); }
+.empty-badge   { background: transparent; }
+
+.not-playing-label { color: var(--accent-red); font-size: 0.75rem; }
+.backup-label { text-transform: uppercase; letter-spacing: 0.08em; }
+
+.stat-chips { display: flex; gap: 4px; }
+.chip {
+  background: var(--bg-overlay);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.psr-pts { font-size: 1.1rem; font-weight: 600; min-width: 36px; text-align: right; }
+.multiplier-label { font-size: 0.7rem; }
+
+/* All players tab */
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+.score-rank { width: 28px; text-align: center; font-size: 0.875rem; }
+.score-info { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.score-stats { display: flex; gap: var(--space-2); flex-shrink: 0; }
+.score-pts { font-size: 1rem; font-weight: 600; min-width: 32px; text-align: right; }
+
+/* Leaderboard tab */
+.lb-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+.lb-rank { width: 32px; text-align: center; }
+.lb-info { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.lb-pts { font-size: 1.1rem; min-width: 40px; text-align: right; }
+.lb-me { border-color: rgba(0,229,255,0.25); }
+
+.live-no-team { padding: var(--space-8); }

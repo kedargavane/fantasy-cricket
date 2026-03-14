@@ -1,0 +1,153 @@
+.home-page { padding-top: var(--space-6); }
+
+.home-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--space-8);
+}
+
+.home-greeting {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+
+.home-username {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  letter-spacing: 0.04em;
+}
+
+.season-switcher {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  padding: 6px 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+/* Live banner */
+.live-banner {
+  background: linear-gradient(135deg, #0a2010 0%, #0f2a1a 100%);
+  border: 1px solid rgba(0,230,118,0.3);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-bottom: var(--space-6);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  transition: transform var(--transition);
+}
+.live-banner:active { transform: scale(0.99); }
+
+.live-banner-pulse {
+  position: absolute;
+  top: -60px; right: -60px;
+  width: 160px; height: 160px;
+  background: radial-gradient(circle, rgba(0,230,118,0.12) 0%, transparent 70%);
+}
+
+.live-banner-content { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.live-label { font-size: 0.75rem; font-weight: 700; color: var(--accent-green); letter-spacing: 0.1em; }
+
+.live-teams {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  letter-spacing: 0.04em;
+}
+.live-vs { color: var(--text-muted); font-size: 0.9rem; }
+
+.live-my-score { display: flex; align-items: center; gap: var(--space-2); margin-top: 2px; }
+.live-score-value { font-family: var(--font-mono); font-size: 1.1rem; color: var(--accent-green); font-weight: 500; }
+.live-no-team { font-size: 0.8125rem; color: var(--text-muted); }
+.live-arrow { color: var(--accent-green); font-size: 1.5rem; }
+
+/* Sections */
+.home-section { margin-bottom: var(--space-8); }
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.section-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.section-link {
+  font-size: 0.8125rem;
+  color: var(--accent-primary);
+}
+
+/* Match cards */
+.match-list { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.match-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+.match-card:active { background: var(--bg-elevated); }
+
+.match-card-left { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.match-card-right { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+
+.match-teams {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+.match-vs { color: var(--text-muted); font-size: 0.75rem; }
+
+.match-my-status { display: flex; flex-direction: column; align-items: flex-end; }
+.match-pts { font-size: 1rem; font-weight: 500; color: var(--accent-primary); }
+.match-arrow { color: var(--text-muted); font-size: 1.25rem; }
+
+/* Mini leaderboard rows */
+.mini-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.mini-row:last-child { border-bottom: none; }
+.mini-row-me { background: rgba(0,229,255,0.04); margin: 0 calc(-1 * var(--space-4)); padding-left: var(--space-4); padding-right: var(--space-4); border-radius: var(--radius-sm); }
+
+.mini-rank { width: 28px; text-align: center; font-size: 0.9rem; }
+.mini-name { flex: 1; font-size: 0.9375rem; }
+.mini-score { font-size: 0.9375rem; font-weight: 500; }
+
+/* Empty state */
+.home-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-16) 0;
+  text-align: center;
+  color: var(--text-secondary);
+}

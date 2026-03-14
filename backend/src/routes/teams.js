@@ -1,0 +1,290 @@
+'use strict';
+
+const express = require('express');
+const { getDb }       = require('../db/database');
+const { requireAuth } = require('../middleware/auth');
+
+const router = express.Router();
+
+// ── POST /api/teams ───────────────────────────────────────────────────────────
+// Submit a team for a match
+router.post('/', requireAuth, (req, res) => {
+  const { matchId, playerIds, captainId, viceCaptainId, backupIds } = req.body;
+
+  // ── Validate input ──
+  const err = validateTeamInput({ matchId, playerIds, captainId, viceCaptainId, backupIds });
+  if (err) return res.status(400).json({ error: err });
+
+  const db = getDb();
+
+  // ── Check match exists and is not locked ──
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+  if (match.status !== 'upcoming') {
+    return res.status(400).json({ error: 'Team submission is closed — match has started' });
+  }
+
+  // ── Check user is in this match's season ──
+  const member = db.prepare(
+    'SELECT id FROM season_memberships WHERE season_id = ? AND user_id = ?'
+  ).get(match.season_id, req.user.id);
+  if (!member) return res.status(403).json({ error: 'Not a member of this season' });
+
+  // ── Check no existing team for this match ──
+  const existing = db.prepare(
+    'SELECT id FROM user_teams WHERE user_id = ? AND match_id = ?'
+  ).get(req.user.id, matchId);
+  if (existing) return res.status(400).json({ error: 'You already have a team for this match' });
+
+  // ── Validate all players are in the match squad ──
+  const allPlayerIds = [...playerIds, ...backupIds];
+  const squadPlayerIds = new Set(
+    db.prepare('SELECT player_id FROM match_squads WHERE match_id = ?')
+      .all(matchId)
+      .map(r => r.player_id)
+  );
+
+  for (const pid of allPlayerIds) {
+    if (!squadPlayerIds.has(pid)) {
+      return res.status(400).json({ error: `Player ${pid} is not in the match squad` });
+    }
+  }
+
+  // ── Validate captain and VC are in main 11 (not backups) ──
+  if (!playerIds.includes(captainId)) {
+    return res.status(400).json({ error: 'Captain must be in your main 11' });
+  }
+  if (!playerIds.includes(viceCaptainId)) {
+    return res.status(400).json({ error: 'Vice-captain must be in your main 11' });
+  }
+  if (captainId === viceCaptainId) {
+    return res.status(400).json({ error: 'Captain and vice-captain must be different players' });
+  }
+
+  // ── No duplicates across main + backups ──
+  const uniqueAll = new Set(allPlayerIds);
+  if (uniqueAll.size !== allPlayerIds.length) {
+    return res.status(400).json({ error: 'Duplicate players detected' });
+  }
+
+  // ── Save team ──
+  try {
+    const saveTeam = db.transaction(() => {
+      const result = db.prepare(`
+        INSERT INTO user_teams (user_id, match_id, captain_id, vice_captain_id)
+        VALUES (?, ?, ?, ?)
+      `).run(req.user.id, matchId, captainId, viceCaptainId);
+
+      const userTeamId = result.lastInsertRowid;
+
+      const insertPlayer = db.prepare(`
+        INSERT INTO user_team_players (user_team_id, player_id, is_backup, backup_order)
+        VALUES (?, ?, ?, ?)
+      `);
+
+      for (const pid of playerIds) {
+        insertPlayer.run(userTeamId, pid, 0, null);
+      }
+
+      backupIds.forEach((pid, idx) => {
+        insertPlayer.run(userTeamId, pid, 1, idx + 1);
+      });
+
+      return userTeamId;
+    });
+
+    const userTeamId = saveTeam();
+    const team       = getTeamDetail(db, userTeamId, req.user.id);
+    return res.status(201).json({ message: 'Team submitted successfully', team });
+  } catch (err) {
+    console.error('[teams/post]', err.message);
+    return res.status(500).json({ error: 'Failed to save team' });
+  }
+});
+
+// ── GET /api/teams/match/:matchId ─────────────────────────────────────────────
+// Get my team for a specific match
+router.get('/match/:matchId', requireAuth, (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.matchId, 10);
+
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  const member = db.prepare(
+    'SELECT id FROM season_memberships WHERE season_id = ? AND user_id = ?'
+  ).get(match.season_id, req.user.id);
+  if (!member) return res.status(403).json({ error: 'Access denied' });
+
+  const userTeam = db.prepare(
+    'SELECT id FROM user_teams WHERE user_id = ? AND match_id = ?'
+  ).get(req.user.id, matchId);
+
+  if (!userTeam) return res.status(404).json({ error: 'No team found for this match' });
+
+  const team = getTeamDetail(db, userTeam.id, req.user.id);
+  return res.json({ team });
+});
+
+// ── GET /api/teams/:userTeamId ────────────────────────────────────────────────
+// Get any user's team (for leaderboard view — only after match locks)
+router.get('/:userTeamId', requireAuth, (req, res) => {
+  const db         = getDb();
+  const userTeamId = parseInt(req.params.userTeamId, 10);
+
+  const userTeam = db.prepare(
+    'SELECT ut.*, m.season_id, m.status as match_status FROM user_teams ut JOIN matches m ON m.id = ut.match_id WHERE ut.id = ?'
+  ).get(userTeamId);
+
+  if (!userTeam) return res.status(404).json({ error: 'Team not found' });
+
+  // Only reveal other users' teams after match has locked
+  if (userTeam.user_id !== req.user.id && userTeam.match_status === 'upcoming') {
+    return res.status(403).json({ error: 'Teams are hidden until match starts' });
+  }
+
+  // Check viewer is in same season
+  const member = db.prepare(
+    'SELECT id FROM season_memberships WHERE season_id = ? AND user_id = ?'
+  ).get(userTeam.season_id, req.user.id);
+  if (!member) return res.status(403).json({ error: 'Access denied' });
+
+  const team = getTeamDetail(db, userTeamId, userTeam.user_id);
+  return res.json({ team });
+});
+
+// ── PUT /api/teams/match/:matchId ─────────────────────────────────────────────
+// Edit team before match locks
+router.put('/match/:matchId', requireAuth, (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.matchId, 10);
+  const { playerIds, captainId, viceCaptainId, backupIds } = req.body;
+
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+  if (match.status !== 'upcoming') {
+    return res.status(400).json({ error: 'Cannot edit team — match has started' });
+  }
+
+  const userTeam = db.prepare(
+    'SELECT id FROM user_teams WHERE user_id = ? AND match_id = ?'
+  ).get(req.user.id, matchId);
+  if (!userTeam) return res.status(404).json({ error: 'No team found to edit' });
+
+  const err = validateTeamInput({ matchId, playerIds, captainId, viceCaptainId, backupIds });
+  if (err) return res.status(400).json({ error: err });
+
+  // Validate all players in squad
+  const allPlayerIds = [...playerIds, ...backupIds];
+  const squadPlayerIds = new Set(
+    db.prepare('SELECT player_id FROM match_squads WHERE match_id = ?')
+      .all(matchId).map(r => r.player_id)
+  );
+  for (const pid of allPlayerIds) {
+    if (!squadPlayerIds.has(pid)) {
+      return res.status(400).json({ error: `Player ${pid} is not in the match squad` });
+    }
+  }
+
+  try {
+    const updateTeam = db.transaction(() => {
+      // Delete existing players and re-insert
+      db.prepare('DELETE FROM user_team_players WHERE user_team_id = ?').run(userTeam.id);
+
+      db.prepare(`
+        UPDATE user_teams SET captain_id = ?, vice_captain_id = ?,
+          resolved_captain_id = NULL, resolved_vice_captain_id = NULL
+        WHERE id = ?
+      `).run(captainId, viceCaptainId, userTeam.id);
+
+      const insertPlayer = db.prepare(`
+        INSERT INTO user_team_players (user_team_id, player_id, is_backup, backup_order)
+        VALUES (?, ?, ?, ?)
+      `);
+
+      for (const pid of playerIds) insertPlayer.run(userTeam.id, pid, 0, null);
+      backupIds.forEach((pid, idx) => insertPlayer.run(userTeam.id, pid, 1, idx + 1));
+    });
+
+    updateTeam();
+    const team = getTeamDetail(db, userTeam.id, req.user.id);
+    return res.json({ message: 'Team updated successfully', team });
+  } catch (err) {
+    console.error('[teams/put]', err.message);
+    return res.status(500).json({ error: 'Failed to update team' });
+  }
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function validateTeamInput({ matchId, playerIds, captainId, viceCaptainId, backupIds }) {
+  if (!matchId)                              return 'matchId is required';
+  if (!Array.isArray(playerIds) || playerIds.length !== 11)
+                                             return 'playerIds must be an array of exactly 11 players';
+  if (!Array.isArray(backupIds) || backupIds.length !== 2)
+                                             return 'backupIds must be an array of exactly 2 players';
+  if (!captainId)                            return 'captainId is required';
+  if (!viceCaptainId)                        return 'viceCaptainId is required';
+  return null;
+}
+
+function getTeamDetail(db, userTeamId, userId) {
+  const team = db.prepare(`
+    SELECT
+      ut.*,
+      u.name as user_name,
+      m.team_a, m.team_b, m.status as match_status, m.start_time,
+      cp.name  as captain_name,
+      vcp.name as vc_name,
+      rcp.name  as resolved_captain_name,
+      rvcp.name as resolved_vc_name
+    FROM user_teams ut
+    JOIN users u     ON u.id   = ut.user_id
+    JOIN matches m   ON m.id   = ut.match_id
+    JOIN players cp  ON cp.id  = ut.captain_id
+    JOIN players vcp ON vcp.id = ut.vice_captain_id
+    LEFT JOIN players rcp  ON rcp.id  = ut.resolved_captain_id
+    LEFT JOIN players rvcp ON rvcp.id = ut.resolved_vice_captain_id
+    WHERE ut.id = ?
+  `).get(userTeamId);
+
+  const players = db.prepare(`
+    SELECT
+      p.id, p.name, p.team, p.role,
+      utp.is_backup, utp.backup_order,
+      pms.runs, pms.balls_faced, pms.fours, pms.sixes,
+      pms.overs_bowled, pms.wickets, pms.runs_conceded,
+      pms.catches, pms.stumpings, pms.run_outs,
+      pms.fantasy_points as base_fantasy_points,
+      ms.is_playing_xi,
+      -- determine effective role
+      CASE
+        WHEN p.id = COALESCE(ut.resolved_captain_id,     ut.captain_id)     THEN 'captain'
+        WHEN p.id = COALESCE(ut.resolved_vice_captain_id, ut.vice_captain_id) THEN 'vice_captain'
+        ELSE 'normal'
+      END as role_in_team
+    FROM user_team_players utp
+    JOIN players p   ON p.id  = utp.player_id
+    JOIN user_teams ut ON ut.id = utp.user_team_id
+    LEFT JOIN player_match_stats pms ON pms.player_id = p.id AND pms.match_id = ut.match_id
+    LEFT JOIN match_squads ms ON ms.player_id = p.id AND ms.match_id = ut.match_id
+    WHERE utp.user_team_id = ?
+    ORDER BY utp.is_backup ASC, utp.backup_order ASC NULLS FIRST
+  `).all(userTeamId);
+
+  // Swap log
+  const swaps = db.prepare(`
+    SELECT
+      uts.*,
+      po.name as swapped_out_name,
+      pi.name as swapped_in_name
+    FROM user_team_swaps uts
+    JOIN players po ON po.id = uts.swapped_out_player_id
+    JOIN players pi ON pi.id = uts.swapped_in_player_id
+    WHERE uts.user_team_id = ?
+  `).all(userTeamId);
+
+  return { ...team, players, swaps };
+}
+
+module.exports = router;
