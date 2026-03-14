@@ -70,7 +70,7 @@ router.post('/', (req, res) => {
         VALUES (?,?,?,?,?,?,?,?)
       `).run(
         seasonId,
-        'f3a4648e-3f13-4070-83ae-d74b6f62f4de',
+        'c26cb45e-361e-4613-8d7b-226e8255d67c',
         'Bangladesh', 'Pakistan',
         'Shere Bangla National Stadium, Mirpur, Dhaka',
         'odi', 'upcoming',
