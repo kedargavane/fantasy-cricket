@@ -12,9 +12,10 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Copy everything needed to run server.cjs with proxy
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
-COPY server.cjs ./
+COPY server.cjs package.json ./
 
 EXPOSE 3000
 

@@ -1,15 +1,9 @@
 import axios from 'axios';
 
-// In dev: Vite proxies /api → localhost:3001
-// In prod: set VITE_API_URL to your Railway backend URL
-const BASE_URL = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api`
-  : '/api';
-
-const SOCKET_URL = import.meta.env.VITE_API_URL || '';
-
+// Always use /api — server.cjs proxies it to the backend in production
+// Vite proxies it in development
 const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL: '/api',
   timeout: 12000,
 });
 
@@ -32,4 +26,4 @@ api.interceptors.response.use(
 );
 
 export default api;
-export { SOCKET_URL };
+export const SOCKET_URL = '';

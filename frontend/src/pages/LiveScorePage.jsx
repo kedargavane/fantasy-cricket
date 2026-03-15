@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import api, { SOCKET_URL } from '../utils/api.js';
+import api from '../utils/api.js';
 import Spinner from '../components/common/Spinner.jsx';
 import './LiveScorePage.css';
 
@@ -49,7 +49,7 @@ export default function LiveScorePage() {
   }
 
   function setupSocket() {
-    const socket = io(SOCKET_URL, { transports: ['websocket'] });
+    const socket = io({ transports: ['websocket'] });
     socketRef.current = socket;
 
     socket.emit('joinMatch', matchId);
