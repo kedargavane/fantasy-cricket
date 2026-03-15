@@ -9,6 +9,7 @@ export default function HomePage() {
   const { user, seasons, activeSeason, switchSeason } = useAuth();
   const navigate = useNavigate();
   const [matches, setMatches]     = useState([]);
+  const [liveScore, setLiveScore] = useState(null); // {teamA: '145/6', teamB: ''}
   const [leaderboard, setBoard]   = useState([]);
   const [loading, setLoading]     = useState(true);
 
@@ -24,7 +25,23 @@ export default function HomePage() {
         api.get(`/matches?seasonId=${activeSeason.id}`),
         api.get(`/leaderboard/season/${activeSeason.id}`),
       ]);
-      setMatches(mRes.data.matches || []);
+      const allMatches = mRes.data.matches || [];
+      setMatches(allMatches);
+      // Fetch live score for live match
+      const live = allMatches.find(m => m.status === 'live');
+      if (live) {
+        try {
+          const sRes = await api.get(`/matches/${live.id}/scores`);
+          const scores = sRes.data.scores || [];
+          const teams = {};
+          scores.forEach(p => {
+            if (!teams[p.team]) teams[p.team] = { runs:0, wkts:0 };
+            teams[p.team].runs += p.runs || 0;
+            if (p.dismissal_type && !['notout','dnb',''].includes(p.dismissal_type)) teams[p.team].wkts++;
+          });
+          setLiveScore(teams);
+        } catch {}
+      }
       setBoard((lRes.data.leaderboard || []).slice(0, 5));
     } catch (e) {
       console.error(e);
@@ -76,7 +93,13 @@ export default function HomePage() {
               </div>
               <div className="live-teams">
                 <span>{liveMatch.team_a}</span>
+                {liveScore?.[liveMatch.team_a] && (
+                  <span className="live-match-score">{liveScore[liveMatch.team_a].runs}/{liveScore[liveMatch.team_a].wkts}</span>
+                )}
                 <span className="live-vs">vs</span>
+                {liveScore?.[liveMatch.team_b] && (
+                  <span className="live-match-score">{liveScore[liveMatch.team_b].runs}/{liveScore[liveMatch.team_b].wkts}</span>
+                )}
                 <span>{liveMatch.team_b}</span>
               </div>
               {liveMatch.has_team ? (
