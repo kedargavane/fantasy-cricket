@@ -87,25 +87,22 @@ export default function TeamPickerPage() {
     const tA = match.team_a;
     const tB = match.team_b;
 
-    // Try exact match first, then fuzzy
+    // Try exact match first
     let pA = squad.filter(p => p.team === tA);
     let pB = squad.filter(p => p.team === tB);
 
-    // If exact match fails, try fuzzy
+    // Fuzzy match if exact fails
     if (pA.length === 0 || pB.length === 0) {
-      const uniqueTeams = [...new Set(squad.map(p => p.team).filter(Boolean))];
-      if (uniqueTeams.length >= 2) {
-        pA = squad.filter(p => matchTeamName(p.team, tA));
-        pB = squad.filter(p => matchTeamName(p.team, tB));
-      } else if (uniqueTeams.length === 1) {
-        // All players have same team name — split by index (first 15 vs last 15)
-        pA = squad.slice(0, Math.ceil(squad.length / 2));
-        pB = squad.slice(Math.ceil(squad.length / 2));
-      } else {
-        // No team info at all — split alphabetically by first letter
-        pA = squad.filter((_, i) => i % 2 === 0);
-        pB = squad.filter((_, i) => i % 2 === 1);
-      }
+      pA = squad.filter(p => matchTeamName(p.team, tA));
+      pB = squad.filter(p => matchTeamName(p.team, tB));
+    }
+
+    // If still empty (team field blank in DB) — split by position
+    // First half = team A, second half = team B (CricAPI returns them grouped)
+    if (pA.length === 0 && pB.length === 0) {
+      const half = Math.ceil(squad.length / 2);
+      pA = squad.slice(0, half);
+      pB = squad.slice(half);
     }
 
     return { teamA: tA, teamB: tB, playersA: pA, playersB: pB };

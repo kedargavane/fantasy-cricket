@@ -58,7 +58,8 @@ async function fetchMatchSquad(matchId) {
   const players = [];
 
   for (const team of squads) {
-    const teamName = team.team || '';
+    // CricAPI returns teamName (not team) in match_squad response
+    const teamName = team.teamName || team.team || team.name || '';
     for (const player of (team.players || [])) {
       players.push({
         externalPlayerId: player.id,
