@@ -18,7 +18,7 @@ export default function LiveScorePage() {
   const [leaderboard, setBoard] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
-  const [tab, setTab]           = useState(0);
+  const [tab, setTab]           = useState(0); // will update after match loads
   const [viewTeam, setViewTeam] = useState(null);
   const [loadingTeam, setLoadingTeam] = useState(false);
   const [compareA, setCompareA] = useState(0);
@@ -45,7 +45,9 @@ export default function LiveScorePage() {
         api.get(`/matches/${matchId}/scores`),
         api.get(`/matches/${matchId}/leaderboard`),
       ]);
-      setMatch(sRes.data.match);
+      const m = sRes.data.match;
+      setMatch(m);
+      if (m?.status === 'completed') setTab(1); // default to Match Score for completed
       setScores(sRes.data.scores || []);
       setBoard(lRes.data.leaderboard || []);
       setLastUpdate(new Date());

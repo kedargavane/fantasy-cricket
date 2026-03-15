@@ -265,10 +265,12 @@ function recomputeTeamPoints(matchId) {
     WHERE pms.match_id = ? AND pms.player_id = ?
   `);
 
-  const getTeamPlayers = db.prepare(`
-    SELECT utp.player_id, utp.is_backup
+  // Fetch ALL players for a team (main + backup) so we can resolve swaps
+  const getAllTeamPlayers = db.prepare(`
+    SELECT utp.player_id, utp.is_backup, utp.backup_order
     FROM user_team_players utp
-    WHERE utp.user_team_id = ? AND utp.is_backup = 0
+    WHERE utp.user_team_id = ?
+    ORDER BY utp.is_backup ASC, utp.backup_order ASC
   `);
 
   const getSquadEntry = db.prepare(
@@ -281,18 +283,43 @@ function recomputeTeamPoints(matchId) {
 
   const recomputeAll = db.transaction(() => {
     for (const team of userTeams) {
-      const captainId    = team.resolved_captain_id     || team.captain_id;
-      const vcId         = team.resolved_vice_captain_id || team.vice_captain_id;
-      const players      = getTeamPlayers.all(team.id);
+      const captainId = team.resolved_captain_id     || team.captain_id;
+      const vcId      = team.resolved_vice_captain_id || team.vice_captain_id;
+      const allPlayers = getAllTeamPlayers.all(team.id);
+
+      const mainPlayers   = allPlayers.filter(p => !p.is_backup);
+      const backupPlayers = allPlayers.filter(p =>  p.is_backup)
+                                      .sort((a, b) => a.backup_order - b.backup_order);
+
+      // Build active XI: main players who played, or their backup replacement
+      const activePlayers = [];
+      const usedBackups   = new Set();
+
+      for (const main of mainPlayers) {
+        const squadEntry  = getSquadEntry.get(matchId, main.player_id);
+        const isPlaying   = squadEntry ? squadEntry.is_playing_xi === 1 : true;
+
+        if (isPlaying) {
+          activePlayers.push(main.player_id);
+        } else {
+          // Find next available backup who is playing
+          const backup = backupPlayers.find(b =>
+            !usedBackups.has(b.player_id) &&
+            (getSquadEntry.get(matchId, b.player_id)?.is_playing_xi === 1)
+          );
+          if (backup) {
+            activePlayers.push(backup.player_id);
+            usedBackups.add(backup.player_id);
+          }
+          // If no backup available, main gets 0 pts (not playing XI)
+        }
+      }
 
       let totalPoints = 0;
 
-      for (const { player_id } of players) {
+      for (const player_id of activePlayers) {
         const stats = getPlayerStats.get(matchId, player_id);
         if (!stats) continue;
-
-        const squadEntry  = getSquadEntry.get(matchId, player_id);
-        const isPlayingXi = squadEntry ? squadEntry.is_playing_xi === 1 : false;
 
         const role =
           player_id === captainId ? 'captain'      :
@@ -301,7 +328,7 @@ function recomputeTeamPoints(matchId) {
 
         const { total } = calculateFantasyPoints(
           {
-            isPlayingXi,
+            isPlayingXi:   true, // only active players reach here
             runs:          stats.runs,
             ballsFaced:    stats.balls_faced,
             fours:         stats.fours,

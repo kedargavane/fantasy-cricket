@@ -48,18 +48,23 @@ export default function MatchResultPage() {
             <div className="my-result-left">
               <span className="my-result-label">Your Result</span>
               <span className="my-result-rank">
-                {myResult.prize_rank === 1 ? '🥇' : myResult.prize_rank === 2 ? '🥈' : myResult.prize_rank === 3 ? '🥉' : `#${myResult.match_rank}`}
+                {(() => { const r = myResult.prize_rank || (rankings.indexOf(myResult) + 1); return r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : `#${r}`; })()}
               </span>
               <span className="my-result-pts mono">{myResult.total_fantasy_points} pts</span>
             </div>
             <div className="my-result-right">
-              <span className={`my-result-units ${myResult.net_units >= 0 ? 'text-green' : 'text-red'} mono`}>
-                {myResult.net_units >= 0 ? '+' : ''}{myResult.net_units}
-              </span>
-              <span className="text-muted text-sm">net units</span>
-              {myResult.gross_units > 0 && (
-                <span className="badge badge-gold mt-2">Won {myResult.gross_units} units 🎉</span>
-              )}
+              {(() => {
+                const entryFee = 300;
+                const gross = myResult.gross_units ?? 0;
+                const net = myResult.net_units ?? (gross - entryFee);
+                return <>
+                  <span className={`my-result-units ${net >= 0 ? 'text-green' : 'text-red'} mono`}>
+                    {net >= 0 ? '+' : ''}{net}
+                  </span>
+                  <span className="text-muted text-sm">net units</span>
+                  {gross > 0 && <span className="badge badge-gold mt-2">Won {gross}u 🎉</span>}
+                </>;
+              })()}
             </div>
           </div>
         )}
@@ -124,15 +129,16 @@ export default function MatchResultPage() {
                 </span>
                 <div className="ranking-info">
                   <span className="player-name">{entry.name}</span>
-                  <span className="text-muted text-sm">{entry.captain_name} (C) · {entry.vc_name} (VC)</span>
                 </div>
                 <div className="ranking-scores">
                   <span className="mono text-primary">{entry.total_fantasy_points} pts</span>
-                  <span className={`mono text-sm ${(entry.net_units ?? entry.gross_units - 300) >= 0 ? 'text-green' : 'text-red'}`}>
-                    {entry.gross_units > 0
-                      ? `+${entry.gross_units}u`
-                      : entry.gross_units === 0 ? '—' : ''}
-                  </span>
+                  {(() => {
+                    const gross = entry.gross_units ?? 0;
+                    const net = entry.net_units ?? (gross - 300);
+                    return <span className={`mono text-sm ${net >= 0 ? 'text-green' : 'text-red'}`}>
+                      {net > 0 ? `+${net}u` : net < 0 ? `${net}u` : '—'}
+                    </span>;
+                  })()}
                 </div>
               </div>
             ))}

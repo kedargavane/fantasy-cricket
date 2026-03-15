@@ -182,11 +182,9 @@ function MatchCard({ match, navigate }) {
   const isCompleted = match.status === 'completed';
   const isUpcoming  = match.status === 'upcoming';
 
-  const dest = isCompleted
-    ? `/match/${match.id}/result`
-    : isUpcoming
-      ? `/match/${match.id}/pick`
-      : `/match/${match.id}/live`;
+  const dest = isUpcoming
+    ? `/match/${match.id}/pick`
+    : `/match/${match.id}/live`;
 
   const startTime = new Date(match.start_time);
   const timeStr   = startTime.toLocaleDateString('en-IN', { day:'numeric', month:'short' })
