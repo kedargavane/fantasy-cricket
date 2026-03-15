@@ -288,3 +288,113 @@ function getTeamDetail(db, userTeamId, userId) {
 }
 
 module.exports = router;
+
+// ── GET /api/teams/compare/:matchId ──────────────────────────────────────────
+// Compare two user teams for a match
+// Query: ?userA=userId&userB=userId
+router.get('/compare/:matchId', requireAuth, (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.matchId, 10);
+  const { userA, userB } = req.query;
+
+  if (!userA || !userB) {
+    return res.status(400).json({ error: 'userA and userB query params required' });
+  }
+
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  // Teams only visible after match locks
+  if (match.status === 'upcoming') {
+    return res.status(403).json({ error: 'Teams are hidden until match starts' });
+  }
+
+  // Verify viewer is in season
+  const member = db.prepare(
+    'SELECT id FROM season_memberships WHERE season_id = ? AND user_id = ?'
+  ).get(match.season_id, req.user.id);
+  if (!member) return res.status(403).json({ error: 'Access denied' });
+
+  function getTeam(userId) {
+    const ut = db.prepare(
+      'SELECT ut.*, u.name as user_name FROM user_teams ut JOIN users u ON u.id = ut.user_id WHERE ut.match_id = ? AND ut.user_id = ?'
+    ).get(matchId, userId);
+    if (!ut) return null;
+
+    const players = db.prepare(`
+      SELECT
+        p.id, p.name, p.team, p.role,
+        utp.is_backup, utp.backup_order,
+        pms.fantasy_points as base_pts,
+        ms.is_playing_xi,
+        CASE
+          WHEN p.id = COALESCE(ut.resolved_captain_id, ut.captain_id) THEN 'captain'
+          WHEN p.id = COALESCE(ut.resolved_vice_captain_id, ut.vice_captain_id) THEN 'vice_captain'
+          ELSE 'normal'
+        END as role_in_team
+      FROM user_team_players utp
+      JOIN players p ON p.id = utp.player_id
+      JOIN user_teams ut ON ut.id = utp.user_team_id
+      LEFT JOIN player_match_stats pms ON pms.player_id = p.id AND pms.match_id = ut.match_id
+      LEFT JOIN match_squads ms ON ms.player_id = p.id AND ms.match_id = ut.match_id
+      WHERE utp.user_team_id = ? AND utp.is_backup = 0
+      ORDER BY pms.fantasy_points DESC NULLS LAST
+    `).all(ut.id);
+
+    // Compute effective points with multipliers
+    const playersWithPts = players.map(p => {
+      const mult = p.role_in_team === 'captain' ? 2 : p.role_in_team === 'vice_captain' ? 1.5 : 1;
+      return { ...p, effective_pts: Math.round((p.base_pts || 0) * mult) };
+    });
+
+    return { ...ut, players: playersWithPts };
+  }
+
+  const teamA = getTeam(parseInt(userA));
+  const teamB = getTeam(parseInt(userB));
+
+  if (!teamA || !teamB) {
+    return res.status(404).json({ error: 'One or both teams not found' });
+  }
+
+  // Find common and unique players
+  const idsA = new Set(teamA.players.map(p => p.id));
+  const idsB = new Set(teamB.players.map(p => p.id));
+
+  const common  = teamA.players.filter(p => idsB.has(p.id)).map(p => p.id);
+  const commonSet = new Set(common);
+
+  const uniqueA = teamA.players.filter(p => !commonSet.has(p.id));
+  const uniqueB = teamB.players.filter(p => !idsA.has(p.id));
+
+  // Stats
+  const commonPtsA = teamA.players.filter(p => commonSet.has(p.id)).reduce((s, p) => s + p.effective_pts, 0);
+  const commonPtsB = teamB.players.filter(p => commonSet.has(p.id)).reduce((s, p) => s + p.effective_pts, 0);
+  const uniquePtsA = uniqueA.reduce((s, p) => s + p.effective_pts, 0);
+  const uniquePtsB = uniqueB.reduce((s, p) => s + p.effective_pts, 0);
+
+  const capA = teamA.players.find(p => p.role_in_team === 'captain');
+  const capB = teamB.players.find(p => p.role_in_team === 'captain');
+  const capAdvantage = capA && capB
+    ? { player: capA.name, ptsA: capA.effective_pts, ptsB: capB ? teamB.players.find(p => p.id === capA.id)?.effective_pts || 0 : 0 }
+    : null;
+
+  return res.json({
+    match,
+    teamA: { ...teamA, uniquePlayers: uniqueA, uniquePts: uniquePtsA },
+    teamB: { ...teamB, uniquePlayers: uniqueB, uniquePts: uniquePtsB },
+    common: {
+      playerIds: common,
+      count: common.length,
+      ptsA: commonPtsA,
+      ptsB: commonPtsB,
+    },
+    analysis: {
+      totalGap: teamA.total_fantasy_points - teamB.total_fantasy_points,
+      uniquePtsDelta: uniquePtsA - uniquePtsB,
+      commonPtsDelta: commonPtsA - commonPtsB,
+      captainA: capA ? { name: capA.name, pts: capA.effective_pts } : null,
+      captainB: capB ? { name: capB.name, pts: capB.effective_pts } : null,
+    },
+  });
+});

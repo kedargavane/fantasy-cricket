@@ -50,6 +50,7 @@ export default function AdminDashboard() {
             {season && <p className="text-secondary text-sm">{season.name} · {season.invite_code}</p>}
           </div>
           <div className="flex gap-2">
+            <Link to="/admin/discover" className="btn btn-secondary btn-sm">🔍 Discover</Link>
             <Link to="/admin/users" className="btn btn-ghost btn-sm">Users</Link>
             <Link to="/" className="btn btn-ghost btn-sm">← App</Link>
           </div>

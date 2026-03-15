@@ -12,7 +12,9 @@ import LeaderboardPage  from './pages/LeaderboardPage.jsx';
 import SettingsPage     from './pages/SettingsPage.jsx';
 import AdminDashboard   from './pages/admin/AdminDashboard.jsx';
 import AdminMatchPage   from './pages/admin/AdminMatchPage.jsx';
-import AdminUsersPage   from './pages/admin/AdminUsersPage.jsx';
+import AdminUsersPage      from './pages/admin/AdminUsersPage.jsx';
+import DiscoverMatchesPage from './pages/admin/DiscoverMatchesPage.jsx';
+import CompareTeamsPage    from './pages/CompareTeamsPage.jsx';
 
 // Layout
 import BottomNav        from './components/common/BottomNav.jsx';
@@ -97,6 +99,16 @@ export default function App() {
           <Route path="/admin/users" element={
             <ProtectedRoute adminOnly>
               <AdminUsersPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/discover" element={
+            <ProtectedRoute adminOnly>
+              <DiscoverMatchesPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/match/:matchId/compare" element={
+            <ProtectedRoute>
+              <AppLayout><CompareTeamsPage /></AppLayout>
             </ProtectedRoute>
           } />
 

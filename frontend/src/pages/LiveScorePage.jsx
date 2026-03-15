@@ -105,11 +105,18 @@ export default function LiveScorePage() {
             </span>
           )}
         </div>
-        {match?.status === 'completed' && (
-          <button className="btn btn-sm btn-secondary" onClick={() => navigate(`/match/${matchId}/result`)}>
-            Result
-          </button>
-        )}
+        <div className="flex gap-2">
+          {(match?.status === 'live' || match?.status === 'completed') && (
+            <button className="btn btn-sm btn-ghost" onClick={() => navigate(`/match/${matchId}/compare`)}>
+              ⚔ Compare
+            </button>
+          )}
+          {match?.status === 'completed' && (
+            <button className="btn btn-sm btn-secondary" onClick={() => navigate(`/match/${matchId}/result`)}>
+              Result
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

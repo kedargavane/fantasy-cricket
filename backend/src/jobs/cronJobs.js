@@ -9,17 +9,22 @@ const { runAutoSchedule } = require('../api/autoSchedule');
 let jobs = [];
 
 /**
- * POLLING STRATEGY — stays within CricAPI free tier (100 calls/day)
+ * POLLING STRATEGY — S plan (2,000 calls/day)
  *
  * Per live match we make two types of API calls:
- *  - "check" call  : match_info — cheap, returns current ball count (~1KB)
+ *  - "check" call  : match_info — cheap, returns current ball count
  *  - "sync" call   : match_scorecard — full stats, triggers recompute
  *
- * We check every 90 seconds. We only sync when ball count has advanced by 3+.
- * This gives roughly 80 scorecard calls per match + ~8 overhead = 88 total.
+ * We check every 60 seconds. We sync every time a new ball is bowled.
+ * This gives ~1 minute lag between a ball being bowled and scores updating.
  *
- * Ball count tracking is stored in-memory in matchBallCount map.
- * If server restarts mid-match we do one immediate sync to catch up.
+ * Call budget:
+ *  T20  single match : ~460 calls
+ *  ODI  single match : ~1,060 calls
+ *  IPL  double-header: ~930 calls (2 T20s)
+ *  All well within 2,000/day limit.
+ *
+ * Ball count is tracked in-memory. Server restart forces immediate sync.
  */
 const matchBallCount = new Map(); // matchId → last synced total balls
 
@@ -33,9 +38,9 @@ function oversToTotalBalls(overs) {
 
 function startCronJobs(io) {
 
-  // ── 1. Smart live poller — every 90 seconds ───────────────────────────────
-  // Checks ball count cheaply, only fetches full scorecard every 3 balls
-  const livePoller = cron.schedule('*/90 * * * * *', async () => {
+  // ── 1. Smart live poller — every 60 seconds ───────────────────────────────
+  // Checks ball count cheaply, syncs full scorecard on every new ball
+  const livePoller = cron.schedule('* * * * *', async () => {
     const db = getDb();
     const liveMatches = db.prepare(
       "SELECT id, external_match_id FROM matches WHERE status = 'live'"
@@ -65,11 +70,11 @@ function startCronJobs(io) {
 
         // Parse current ball count from t1i/t2i score fields
         const currentBalls = getMatchBallCount(info);
-        const lastBalls    = matchBallCount.get(match.id) ?? -3; // force first sync
+        const lastBalls    = matchBallCount.get(match.id) ?? -1; // force first sync
 
-        if (currentBalls - lastBalls >= 3) {
-          // 3+ balls since last sync — do full scorecard fetch
-          console.log(`[livePoller] Match ${match.id}: balls ${lastBalls}→${currentBalls}, syncing...`);
+        if (currentBalls > lastBalls) {
+          // New ball bowled — do full scorecard fetch
+          console.log(`[livePoller] Match ${match.id}: ball ${lastBalls}→${currentBalls}, syncing...`);
           const result = await syncLiveMatch(match.id, match.external_match_id);
 
           if (result.success) {

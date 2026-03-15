@@ -6,6 +6,7 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { upsertMatch, upsertSquad, processAutoSwaps, recomputeTeamPoints } = require('../api/syncService');
 const { distributePrizes }       = require('../engines/prizeEngine');
 const { sendMatchReminders }     = require('../jobs/cronJobs');
+const { discoverMatches }        = require('../api/discoverMatches');
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
@@ -85,6 +86,55 @@ router.post('/seasons/:id/sync-schedule', async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
+});
+
+// ── GET /api/admin/discover ──────────────────────────────────────────────────
+// Browse upcoming matches from CricAPI and approve them into the season
+router.get('/discover', async (req, res) => {
+  const db = getDb();
+  return discoverMatches(req, res, db);
+});
+
+// ── POST /api/admin/discover/approve ─────────────────────────────────────────
+// Approve a match from CricAPI discovery into the season
+router.post('/discover/approve', async (req, res) => {
+  const db = getDb();
+  const { seasonId, externalMatchId, teamA, teamB, venue, matchType, startTime, entryUnits } = req.body;
+
+  if (!seasonId || !externalMatchId || !teamA || !teamB || !startTime) {
+    return res.status(400).json({ error: 'seasonId, externalMatchId, teamA, teamB, startTime required' });
+  }
+
+  // Check not already added
+  const existing = db.prepare('SELECT id FROM matches WHERE external_match_id = ?').get(externalMatchId);
+  if (existing) {
+    return res.status(400).json({ error: 'Match already added to this season', matchId: existing.id });
+  }
+
+  const matchId = upsertMatch(seasonId, {
+    externalMatchId, teamA, teamB,
+    venue: venue || '',
+    matchType: matchType || 't20',
+    status: 'upcoming',
+    startTime,
+  });
+
+  if (entryUnits && entryUnits !== 300) {
+    db.prepare('UPDATE match_config SET entry_units = ? WHERE match_id = ?').run(entryUnits, matchId);
+  }
+
+  // Auto-sync squad immediately
+  try {
+    const cricapi = require('../api/cricapi');
+    const players = await cricapi.fetchMatchSquad(externalMatchId);
+    if (players.length > 0) {
+      const { upsertSquad } = require('../api/syncService');
+      upsertSquad(matchId, players);
+    }
+  } catch { /* squad not available yet — that's fine */ }
+
+  const match = db.prepare('SELECT m.*, mc.entry_units FROM matches m LEFT JOIN match_config mc ON mc.match_id = m.id WHERE m.id = ?').get(matchId);
+  return res.status(201).json({ message: 'Match approved and added to season', match });
 });
 
 // ════════════════════════════════════════════════════════
