@@ -4,6 +4,27 @@ import api from '../utils/api.js';
 import Spinner from '../components/common/Spinner.jsx';
 import './TeamPickerPage.css';
 
+function useCountdown(targetISO) {
+  const [timeLeft, setTimeLeft] = useState('');
+  const [urgent, setUrgent]     = useState(false);
+  useEffect(() => {
+    if (!targetISO) return;
+    function tick() {
+      const diff = new Date(targetISO) - new Date();
+      if (diff <= 0) { setTimeLeft('Locked'); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setUrgent(diff < 15 * 60000); // urgent if < 15 mins
+      setTimeLeft(h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`);
+    }
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [targetISO]);
+  return { timeLeft, urgent };
+}
+
 const ROLE_FILTERS = [
   { key: 'ALL',  label: 'All' },
   { key: 'BAT',  label: 'Bat' },
@@ -50,6 +71,7 @@ export default function TeamPickerPage() {
   const [backupIds, setBackupIds] = useState(new Set());
   const [captainId, setCaptain]   = useState(null);
   const [vcId,      setVc]        = useState(null);
+  const { timeLeft, urgent } = useCountdown(match?.start_time);
 
   useEffect(() => { loadData(); }, [matchId]);
 
@@ -202,6 +224,11 @@ export default function TeamPickerPage() {
         <div className="picker-topbar-center">
           <span className="picker-topbar-title">Pick your team</span>
           <span className="picker-topbar-match">{match?.team_a} vs {match?.team_b}</span>
+          {timeLeft && (
+            <span className={`picker-countdown ${urgent ? 'countdown-urgent' : ''}`}>
+              Locks in {timeLeft}
+            </span>
+          )}
         </div>
         <div className="picker-counters">
           <span className={`picker-counter ${mainCount === 11 ? 'counter-done' : ''}`}>{mainCount}/11</span>
@@ -269,9 +296,17 @@ export default function TeamPickerPage() {
           {mainCount === 0 && <span className="tray-empty">Tap + to select players</span>}
         </div>
         {error && <p className="auth-error">{error}</p>}
-        <button className="btn btn-primary btn-full" disabled={!canSubmit || saving} onClick={submit}>
-          {saving ? <span className="spinner" style={{width:16,height:16,borderWidth:2}} /> : existing ? 'Update Team' : 'Submit Team'}
-        </button>
+        <div className="tray-submit-row">
+          <span className="tray-status text-sm">
+            {canSubmit
+              ? <span style={{color:'var(--accent-green)'}}>Ready to submit!</span>
+              : <span style={{color:'var(--accent-gold)'}}>{statusText}</span>
+            }
+          </span>
+          <button className="btn btn-primary tray-submit-btn" disabled={!canSubmit || saving} onClick={submit}>
+            {saving ? <span className="spinner" style={{width:14,height:14,borderWidth:2}} /> : existing ? 'Update ✓' : 'Submit Team ✓'}
+          </button>
+        </div>
       </div>
 
     </div>
