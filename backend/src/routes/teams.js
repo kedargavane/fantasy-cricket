@@ -445,3 +445,55 @@ router.post('/match/:matchId', requireAuth, async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
+// ── PUT /api/teams/:userTeamId ────────────────────────────────────────────────
+// Update existing team by userTeamId — used by frontend edit flow
+router.put('/:userTeamId', requireAuth, (req, res) => {
+  const db         = getDb();
+  const userTeamId = parseInt(req.params.userTeamId, 10);
+  const userId     = req.user.id;
+  const { playerIds, backupIds, captainId, viceCaptainId } = req.body;
+
+  if (!Array.isArray(playerIds) || playerIds.length !== 11) {
+    return res.status(400).json({ error: '11 playerIds required' });
+  }
+  if (!Array.isArray(backupIds) || backupIds.length !== 2) {
+    return res.status(400).json({ error: '2 backupIds required' });
+  }
+  if (!captainId || !viceCaptainId) {
+    return res.status(400).json({ error: 'captainId and viceCaptainId required' });
+  }
+
+  const userTeam = db.prepare(
+    'SELECT ut.*, m.status FROM user_teams ut JOIN matches m ON m.id = ut.match_id WHERE ut.id = ? AND ut.user_id = ?'
+  ).get(userTeamId, userId);
+
+  if (!userTeam) return res.status(404).json({ error: 'Team not found' });
+  if (userTeam.status !== 'upcoming') return res.status(400).json({ error: 'Match has started — team is locked' });
+
+  const update = db.transaction(() => {
+    // Delete existing players
+    db.prepare('DELETE FROM user_team_players WHERE user_team_id = ?').run(userTeamId);
+
+    // Update captain/VC
+    db.prepare(`
+      UPDATE user_teams SET
+        captain_id = ?, vice_captain_id = ?,
+        resolved_captain_id = ?, resolved_vice_captain_id = ?,
+        locked_at = datetime('now')
+      WHERE id = ?
+    `).run(captainId, viceCaptainId, captainId, viceCaptainId, userTeamId);
+
+    // Insert new players
+    const ins = db.prepare('INSERT INTO user_team_players (user_team_id,player_id,is_backup,backup_order) VALUES (?,?,?,?)');
+    for (const pid of playerIds) ins.run(userTeamId, pid, 0, null);
+    backupIds.forEach((pid, i) => ins.run(userTeamId, pid, 1, i + 1));
+  });
+
+  try {
+    update();
+    return res.json({ message: 'Team updated successfully', userTeamId });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});

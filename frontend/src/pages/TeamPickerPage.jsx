@@ -198,7 +198,19 @@ export default function TeamPickerPage() {
       if (existing) {
         await api.put(`/teams/${existing.id}`, payload);
       } else {
-        await api.post(`/teams/match/${matchId}`, payload);
+        try {
+          await api.post(`/teams/match/${matchId}`, payload);
+        } catch (postErr) {
+          // If already exists, fetch the team ID and use PUT instead
+          if (postErr.response?.data?.error?.includes('already')) {
+            const tRes = await api.get(`/teams/match/${matchId}`);
+            const t = tRes.data.team;
+            setExisting(t);
+            await api.put(`/teams/${t.id}`, payload);
+          } else {
+            throw postErr;
+          }
+        }
       }
       navigate(`/match/${matchId}/live`);
     } catch (err) {
