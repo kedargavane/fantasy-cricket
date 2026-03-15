@@ -242,7 +242,11 @@ export default function LiveScorePage() {
       {tab === 2 && (
         <div className="container mt-4">
           {leaderboard.map((entry, i) => (
-            <div key={entry.user_id} className={`lb-row card mb-2 ${entry.user_id ? 'lb-me' : ''}`}>
+            <div
+              key={entry.user_id}
+              className={`lb-row card mb-2 lb-row-clickable ${entry.user_id ? 'lb-me' : ''}`}
+              onClick={() => navigate(`/match/${matchId}/compare?userA=${entry.user_id}&userB=${entry.user_id}`)}
+            >
               <span className="lb-rank mono">
                 {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
               </span>
@@ -255,6 +259,7 @@ export default function LiveScorePage() {
               <span className="lb-pts text-cyan mono font-bold">
                 {entry.total_fantasy_points}
               </span>
+              <span className="lb-chevron">›</span>
             </div>
           ))}
         </div>

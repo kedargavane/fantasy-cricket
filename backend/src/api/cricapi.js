@@ -1,8 +1,12 @@
 'use strict';
 
-const axios = require('axios');
+const https   = require('https');
+const axios   = require('axios');
 
 const BASE_URL = 'https://api.cricapi.com/v1';
+
+// Keep-alive agent — reuses TCP connections, more reliable on Railway
+const httpsAgent = new https.Agent({ keepAlive: true });
 
 function getApiKey() {
   const key = process.env.CRICAPI_KEY;
@@ -11,18 +15,42 @@ function getApiKey() {
 }
 
 async function cricGet(endpoint, params = {}) {
-  const response = await axios.get(`${BASE_URL}/${endpoint}`, {
-    params: { apikey: getApiKey(), ...params },
-    timeout: 30000,
-  });
+  const url = new URL(`${BASE_URL}/${endpoint}`);
+  url.searchParams.set('apikey', getApiKey());
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
-  const data = response.data;
+  // Try native https first (more reliable on Railway), fall back to axios
+  try {
+    const data = await new Promise((resolve, reject) => {
+      const req = https.get(url.toString(), { agent: httpsAgent, timeout: 30000 }, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          try { resolve(JSON.parse(body)); }
+          catch (e) { reject(new Error('Invalid JSON from CricAPI')); }
+        });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    });
 
-  if (!data || data.status !== 'success') {
-    throw new Error(`CricAPI error on ${endpoint}: ${data?.status} — ${data?.reason || 'unknown'}`);
+    if (!data || data.status !== 'success') {
+      throw new Error(`CricAPI error on ${endpoint}: ${data?.status} — ${data?.reason || 'unknown'}`);
+    }
+    return data;
+  } catch (err) {
+    // Fallback to axios
+    const response = await axios.get(`${BASE_URL}/${endpoint}`, {
+      params: { apikey: getApiKey(), ...params },
+      timeout: 30000,
+      httpsAgent,
+    });
+    const data = response.data;
+    if (!data || data.status !== 'success') {
+      throw new Error(`CricAPI error on ${endpoint}: ${data?.status} — ${data?.reason || 'unknown'}`);
+    }
+    return data;
   }
-
-  return data;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
