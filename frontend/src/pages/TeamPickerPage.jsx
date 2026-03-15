@@ -27,6 +27,13 @@ function shortName(name) {
   return parts.length === 1 ? name : parts[parts.length - 1];
 }
 
+function matchTeamName(playerTeam, matchTeam) {
+  if (!playerTeam || !matchTeam) return false;
+  const p = playerTeam.toLowerCase().trim();
+  const m = matchTeam.toLowerCase().trim();
+  return p === m || p.includes(m) || m.includes(p);
+}
+
 export default function TeamPickerPage() {
   const { matchId } = useParams();
   const navigate    = useNavigate();
@@ -39,7 +46,6 @@ export default function TeamPickerPage() {
   const [error, setError]       = useState('');
   const [filter, setFilter]     = useState('ALL');
 
-  // Independent sets — a player can be main OR backup, not both
   const [mainIds,   setMainIds]   = useState(new Set());
   const [backupIds, setBackupIds] = useState(new Set());
   const [captainId, setCaptain]   = useState(null);
@@ -60,7 +66,7 @@ export default function TeamPickerPage() {
         const t = tRes.data.team;
         setExisting(t);
         const mains = new Set(t.players.filter(p => !p.is_backup).map(p => p.id));
-        const baks  = new Set(t.players.filter(p => p.is_backup).map(p => p.id));
+        const baks  = new Set(t.players.filter(p =>  p.is_backup).map(p => p.id));
         setMainIds(mains);
         setBackupIds(baks);
         setCaptain(t.captain_id);
@@ -73,18 +79,44 @@ export default function TeamPickerPage() {
     }
   }
 
-  const teamNames = useMemo(() => {
-    const names = [...new Set(squad.map(p => p.team))].sort();
-    return names;
-  }, [squad]);
+  // Split squad into two columns using match team names as anchors
+  // This handles any variation in how CricAPI returns team names
+  const { teamA, teamB, playersA, playersB } = useMemo(() => {
+    if (!match || squad.length === 0) return { teamA: '', teamB: '', playersA: [], playersB: [] };
+
+    const tA = match.team_a;
+    const tB = match.team_b;
+
+    // Try exact match first, then fuzzy
+    let pA = squad.filter(p => p.team === tA);
+    let pB = squad.filter(p => p.team === tB);
+
+    // If exact match fails, try fuzzy
+    if (pA.length === 0 || pB.length === 0) {
+      const uniqueTeams = [...new Set(squad.map(p => p.team).filter(Boolean))];
+      if (uniqueTeams.length >= 2) {
+        pA = squad.filter(p => matchTeamName(p.team, tA));
+        pB = squad.filter(p => matchTeamName(p.team, tB));
+      } else if (uniqueTeams.length === 1) {
+        // All players have same team name — split by index (first 15 vs last 15)
+        pA = squad.slice(0, Math.ceil(squad.length / 2));
+        pB = squad.slice(Math.ceil(squad.length / 2));
+      } else {
+        // No team info at all — split alphabetically by first letter
+        pA = squad.filter((_, i) => i % 2 === 0);
+        pB = squad.filter((_, i) => i % 2 === 1);
+      }
+    }
+
+    return { teamA: tA, teamB: tB, playersA: pA, playersB: pB };
+  }, [match, squad]);
 
   const mainCount   = mainIds.size;
   const backupCount = backupIds.size;
 
-  function filteredForTeam(teamName) {
-    return squad.filter(p => {
-      if (p.team !== teamName) return false;
-      if (filter === 'ALL')  return true;
+  function applyRoleFilter(players) {
+    if (filter === 'ALL') return players;
+    return players.filter(p => {
       const r = normaliseRole(p.role);
       if (filter === 'BAT')  return r === 'Bat';
       if (filter === 'BOWL') return r === 'Bowl';
@@ -95,10 +127,8 @@ export default function TeamPickerPage() {
   }
 
   function toggleMain(playerId) {
-    // Can't select as main if already a backup
     if (backupIds.has(playerId)) return;
     if (mainIds.has(playerId)) {
-      // Deselect main
       if (captainId === playerId) setCaptain(null);
       if (vcId === playerId) setVc(null);
       setMainIds(s => { const n = new Set(s); n.delete(playerId); return n; });
@@ -109,7 +139,6 @@ export default function TeamPickerPage() {
   }
 
   function toggleBackup(playerId) {
-    // Can't select as backup if already in main 11
     if (mainIds.has(playerId)) return;
     if (backupIds.has(playerId)) {
       setBackupIds(s => { const n = new Set(s); n.delete(playerId); return n; });
@@ -132,12 +161,11 @@ export default function TeamPickerPage() {
   }
 
   const canSubmit = mainCount === 11 && backupCount === 2 && captainId && vcId;
-
   const statusText = !canSubmit
-    ? mainCount < 11    ? `Pick ${11 - mainCount} more`
-    : backupCount < 2   ? `Pick ${2 - backupCount} backup${backupCount === 1 ? '' : 's'}`
-    : !captainId        ? 'Assign captain'
-    : 'Assign vice captain'
+    ? mainCount < 11    ? `${11 - mainCount} more`
+    : backupCount < 2   ? `${2 - backupCount} backup${backupCount === 1 ? '' : 's'}`
+    : !captainId        ? 'Pick C'
+    : 'Pick VC'
     : '';
 
   async function submit() {
@@ -162,6 +190,11 @@ export default function TeamPickerPage() {
   }
 
   if (loading) return <Spinner center />;
+
+  const colA = applyRoleFilter(playersA);
+  const colB = applyRoleFilter(playersB);
+  const colAMain = playersA.filter(p => mainIds.has(p.id)).length;
+  const colBMain = playersB.filter(p => mainIds.has(p.id)).length;
 
   return (
     <div className="picker-page">
@@ -193,85 +226,32 @@ export default function TeamPickerPage() {
         <span className="leg-item"><span className="leg-pip pip-xi" />XI</span>
         <span className="leg-item"><span className="leg-pip pip-main" />Main</span>
         <span className="leg-item"><span className="leg-pip pip-bak" />Backup</span>
-        <span className="leg-item leg-cap-item"><span className="leg-cap">C</span>2× &nbsp;<span className="leg-vc">VC</span>1.5×</span>
+        <span className="leg-cap-item"><span className="leg-cap">C</span>2× &nbsp;<span className="leg-vc">VC</span>1.5×</span>
       </div>
 
-      {/* Two-column squad */}
+      {/* Two columns — explicitly rendered, no dynamic split */}
       <div className="picker-grid">
-        {teamNames.map(teamName => {
-          const players = filteredForTeam(teamName);
-          const colMainCount = squad.filter(p => p.team === teamName && mainIds.has(p.id)).length;
-          return (
-            <div key={teamName} className="picker-col">
-              <div className="picker-col-hdr">
-                <span className="picker-col-name">{teamName}</span>
-                <span className="picker-col-count">{colMainCount} main</span>
-              </div>
-              {players.length === 0 && (
-                <div className="picker-empty text-muted">No {filter} players</div>
-              )}
-              {players.map(p => {
-                const isMain   = mainIds.has(p.id);
-                const isBak    = backupIds.has(p.id);
-                const isCap    = captainId === p.id;
-                const isVc     = vcId === p.id;
-                const mainFull = !isMain && !isBak && mainCount >= 11;
-                const bakFull  = !isBak && !isMain && backupCount >= 2;
 
-                return (
-                  <div
-                    key={p.id}
-                    className={`prow
-                      ${isMain ? 'prow-main' : ''}
-                      ${isBak  ? 'prow-bak'  : ''}
-                      ${isCap  ? 'prow-cap'  : ''}
-                      ${isVc   ? 'prow-vc'   : ''}
-                    `}
-                  >
-                    {/* Left: XI pip + name */}
-                    <div className="prow-left">
-                      <span className={`pip ${p.is_playing_xi ? 'pip-xi-sm' : 'pip-empty'}`} />
-                      <div className="prow-info">
-                        <span className="prow-name">{p.name}</span>
-                        <span className="prow-role">{normaliseRole(p.role)}</span>
-                      </div>
-                    </div>
+        {/* Column A */}
+        <div className="picker-col">
+          <div className="picker-col-hdr">
+            <span className="picker-col-name">{teamA}</span>
+            <span className="picker-col-count">{colAMain} picked</span>
+          </div>
+          {colA.length === 0 && <div className="picker-empty">No players</div>}
+          {colA.map(p => <PlayerRow key={p.id} p={p} mainIds={mainIds} backupIds={backupIds} captainId={captainId} vcId={vcId} mainCount={mainCount} backupCount={backupCount} toggleMain={toggleMain} toggleBackup={toggleBackup} handleCaptain={handleCaptain} handleVc={handleVc} />)}
+        </div>
 
-                    {/* Right: C/VC + Main/Backup buttons */}
-                    <div className="prow-right">
-                      {isMain && (
-                        <>
-                          <button className={`role-btn ${isCap ? 'role-btn-cap' : ''}`} onClick={e => handleCaptain(e, p.id)}>C</button>
-                          <button className={`role-btn ${isVc ? 'role-btn-vc' : ''}`} onClick={e => handleVc(e, p.id)} disabled={isCap}>VC</button>
-                        </>
-                      )}
-                      {/* Main toggle */}
-                      <button
-                        className={`sel-btn ${isMain ? 'sel-btn-main' : ''} ${mainFull && !isBak ? 'sel-btn-dim' : ''}`}
-                        onClick={() => toggleMain(p.id)}
-                        disabled={isBak || (mainFull)}
-                        title={isBak ? 'Remove from backup first' : mainFull ? '11 players already selected' : isMain ? 'Remove from main' : 'Add to main 11'}
-                      >
-                        {isMain ? '✓' : '+'}
-                      </button>
-                      {/* Backup toggle — only show if not in main */}
-                      {!isMain && (
-                        <button
-                          className={`sel-btn sel-btn-bak-toggle ${isBak ? 'sel-btn-bak-on' : ''} ${bakFull ? 'sel-btn-dim' : ''}`}
-                          onClick={() => toggleBackup(p.id)}
-                          disabled={bakFull && !isBak}
-                          title={isBak ? 'Remove backup' : bakFull ? '2 backups already selected' : 'Add as backup'}
-                        >
-                          {isBak ? 'B✓' : 'B'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
+        {/* Column B */}
+        <div className="picker-col">
+          <div className="picker-col-hdr">
+            <span className="picker-col-name">{teamB}</span>
+            <span className="picker-col-count">{colBMain} picked</span>
+          </div>
+          {colB.length === 0 && <div className="picker-empty">No players</div>}
+          {colB.map(p => <PlayerRow key={p.id} p={p} mainIds={mainIds} backupIds={backupIds} captainId={captainId} vcId={vcId} mainCount={mainCount} backupCount={backupCount} toggleMain={toggleMain} toggleBackup={toggleBackup} handleCaptain={handleCaptain} handleVc={handleVc} />)}
+        </div>
+
       </div>
 
       {/* Tray */}
@@ -289,17 +269,55 @@ export default function TeamPickerPage() {
           {squad.filter(p => backupIds.has(p.id)).map((p, i) => (
             <span key={p.id} className="tray-chip chip-bak">{shortName(p.name)} B{i+1}</span>
           ))}
-          {mainCount === 0 && <span className="tray-empty">Tap + to add players</span>}
+          {mainCount === 0 && <span className="tray-empty">Tap + to select players</span>}
         </div>
         {error && <p className="auth-error">{error}</p>}
         <button className="btn btn-primary btn-full" disabled={!canSubmit || saving} onClick={submit}>
-          {saving
-            ? <span className="spinner" style={{width:16,height:16,borderWidth:2}} />
-            : existing ? 'Update Team' : 'Submit Team'
-          }
+          {saving ? <span className="spinner" style={{width:16,height:16,borderWidth:2}} /> : existing ? 'Update Team' : 'Submit Team'}
         </button>
       </div>
 
+    </div>
+  );
+}
+
+function PlayerRow({ p, mainIds, backupIds, captainId, vcId, mainCount, backupCount, toggleMain, toggleBackup, handleCaptain, handleVc }) {
+  const isMain  = mainIds.has(p.id);
+  const isBak   = backupIds.has(p.id);
+  const isCap   = captainId === p.id;
+  const isVc    = vcId === p.id;
+  const mainFull = !isMain && !isBak && mainCount >= 11;
+  const bakFull  = !isBak && backupCount >= 2;
+
+  return (
+    <div className={`prow ${isMain ? 'prow-main' : ''} ${isBak ? 'prow-bak' : ''} ${isCap ? 'prow-cap' : ''} ${isVc ? 'prow-vc' : ''}`}>
+      <div className="prow-left">
+        <span className={`pip ${p.is_playing_xi ? 'pip-xi-sm' : 'pip-empty'}`} />
+        <div className="prow-info">
+          <span className="prow-name">{p.name}</span>
+          <span className="prow-role">{normaliseRole(p.role)}</span>
+        </div>
+      </div>
+      <div className="prow-right">
+        {isMain && (
+          <>
+            <button className={`role-btn ${isCap ? 'role-btn-cap' : ''}`} onClick={e => handleCaptain(e, p.id)}>C</button>
+            <button className={`role-btn ${isVc ? 'role-btn-vc' : ''}`} onClick={e => handleVc(e, p.id)} disabled={isCap}>VC</button>
+          </>
+        )}
+        <button
+          className={`sel-btn ${isMain ? 'sel-btn-main' : ''} ${mainFull ? 'sel-btn-dim' : ''}`}
+          onClick={() => toggleMain(p.id)}
+          disabled={isBak || mainFull}
+        >{isMain ? '✓' : '+'}</button>
+        {!isMain && (
+          <button
+            className={`sel-btn sel-btn-bak-toggle ${isBak ? 'sel-btn-bak-on' : ''} ${bakFull && !isBak ? 'sel-btn-dim' : ''}`}
+            onClick={() => toggleBackup(p.id)}
+            disabled={bakFull && !isBak}
+          >{isBak ? 'B✓' : 'B'}</button>
+        )}
+      </div>
     </div>
   );
 }
