@@ -13,7 +13,7 @@ function getApiKey() {
 async function cricGet(endpoint, params = {}) {
   const response = await axios.get(`${BASE_URL}/${endpoint}`, {
     params: { apikey: getApiKey(), ...params },
-    timeout: 10000,
+    timeout: 30000,
   });
 
   const data = response.data;

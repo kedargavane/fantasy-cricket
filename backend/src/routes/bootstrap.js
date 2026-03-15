@@ -149,4 +149,32 @@ router.post('/reset', (req, res) => {
   }
 });
 
+// ── POST /api/bootstrap/sync-season ──────────────────────────────────────────
+// Add ALL users in DB to season — safe to run multiple times
+router.post('/sync-season', (req, res) => {
+  const db = getDb();
+  const season = db.prepare("SELECT id FROM seasons WHERE status='active' LIMIT 1").get();
+  if (!season) return res.status(404).json({ error: 'No active season' });
+
+  const users = db.prepare('SELECT id FROM users').all();
+  let added = 0;
+
+  db.transaction(() => {
+    for (const u of users) {
+      const exists = db.prepare(
+        'SELECT id FROM season_memberships WHERE season_id=? AND user_id=?'
+      ).get(season.id, u.id);
+      if (!exists) {
+        db.prepare('INSERT INTO season_memberships (season_id,user_id) VALUES (?,?)').run(season.id, u.id);
+        db.prepare('INSERT OR IGNORE INTO season_leaderboard (season_id,user_id) VALUES (?,?)').run(season.id, u.id);
+        added++;
+      } else {
+        db.prepare('INSERT OR IGNORE INTO season_leaderboard (season_id,user_id) VALUES (?,?)').run(season.id, u.id);
+      }
+    }
+  })();
+
+  return res.json({ message: `Synced ${users.length} users, added ${added} new members`, seasonId: season.id });
+});
+
 module.exports = router;

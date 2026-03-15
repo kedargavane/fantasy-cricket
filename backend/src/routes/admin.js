@@ -15,6 +15,35 @@ router.use(requireAuth, requireAdmin);
 // SEASONS
 // ════════════════════════════════════════════════════════
 
+// ── POST /api/admin/seasons/:id/sync-members ─────────────────────────────────
+// Adds ALL registered users to a season — safe to run multiple times
+router.post('/seasons/:id/sync-members', (req, res) => {
+  const db       = getDb();
+  const seasonId = parseInt(req.params.id, 10);
+
+  const season = db.prepare('SELECT id FROM seasons WHERE id = ?').get(seasonId);
+  if (!season) return res.status(404).json({ error: 'Season not found' });
+
+  const users = db.prepare('SELECT id FROM users').all();
+  let added = 0;
+
+  const sync = db.transaction(() => {
+    for (const u of users) {
+      const existing = db.prepare('SELECT id FROM season_memberships WHERE season_id=? AND user_id=?').get(seasonId, u.id);
+      if (!existing) {
+        db.prepare('INSERT INTO season_memberships (season_id,user_id) VALUES (?,?)').run(seasonId, u.id);
+        db.prepare('INSERT OR IGNORE INTO season_leaderboard (season_id,user_id) VALUES (?,?)').run(seasonId, u.id);
+        added++;
+      } else {
+        db.prepare('INSERT OR IGNORE INTO season_leaderboard (season_id,user_id) VALUES (?,?)').run(seasonId, u.id);
+      }
+    }
+  });
+
+  sync();
+  return res.json({ message: `Synced ${users.length} users, added ${added} new members`, total: users.length });
+});
+
 // ── GET /api/admin/seasons ────────────────────────────────────────────────────
 router.get('/seasons', (req, res) => {
   const db = getDb();
