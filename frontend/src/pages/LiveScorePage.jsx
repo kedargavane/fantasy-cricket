@@ -245,16 +245,13 @@ export default function LiveScorePage() {
             <div
               key={entry.user_id}
               className={`lb-row card mb-2 lb-row-clickable ${entry.user_id ? 'lb-me' : ''}`}
-              onClick={() => navigate(`/match/${matchId}/compare?userA=${entry.user_id}&userB=${entry.user_id}`)}
+              onClick={() => navigate(`/match/${matchId}/live?viewUser=${entry.user_id}`)}
             >
               <span className="lb-rank mono">
                 {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
               </span>
               <div className="lb-info">
                 <span className="player-name">{entry.name}</span>
-                <span className="text-muted text-sm">
-                  {entry.captain_name} (C) · {entry.vc_name} (VC)
-                </span>
               </div>
               <span className="lb-pts text-cyan mono font-bold">
                 {entry.total_fantasy_points}

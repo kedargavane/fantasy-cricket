@@ -179,12 +179,11 @@ export default function TeamPickerPage() {
     setVc(v => v === playerId ? null : playerId);
   }
 
-  const canSubmit = mainCount === 11 && backupCount === 2 && captainId && vcId;
+  const canSubmit = mainCount === 11 && captainId && vcId;
   const statusText = !canSubmit
-    ? mainCount < 11    ? `${11 - mainCount} more`
-    : backupCount < 2   ? `${2 - backupCount} backup${backupCount === 1 ? '' : 's'}`
-    : !captainId        ? 'Pick C'
-    : 'Pick VC'
+    ? mainCount < 11 ? `${11 - mainCount} more to pick`
+    : !captainId     ? 'Pick a captain'
+    : 'Pick a VC'
     : '';
 
   async function submit() {
@@ -252,7 +251,8 @@ export default function TeamPickerPage() {
           >
             {saving
               ? <span className="spinner" style={{width:12,height:12,borderWidth:2}} />
-              : canSubmit ? 'Submit ✓' : !captainId ? 'Pick C' : !vcId ? 'Pick VC' : 'Submit'
+              : existing ? (canSubmit ? 'Update ✓' : !captainId ? 'Pick C' : 'Pick VC')
+                         : (canSubmit ? 'Submit ✓' : !captainId ? 'Pick C' : 'Pick VC')
             }
           </button>
         </div>
