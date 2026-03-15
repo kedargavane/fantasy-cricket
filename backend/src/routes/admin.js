@@ -211,6 +211,24 @@ router.post('/matches/:id/sync-scorecard', async (req, res) => {
   }
 });
 
+// ── POST /api/admin/matches/:id/process-swaps ────────────────────────────────
+// Force re-process auto-swaps for all teams in a match
+// Resets swap_processed_at so swaps run again with current XI data
+router.post('/matches/:id/process-swaps', (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+
+  // Reset swap_processed_at so processAutoSwaps runs again
+  db.prepare('UPDATE user_teams SET swap_processed_at = NULL WHERE match_id = ?').run(matchId);
+
+  // Re-run swaps
+  const { processAutoSwaps, recomputeTeamPoints } = require('../api/syncService');
+  const swapped = processAutoSwaps(matchId);
+  recomputeTeamPoints(matchId);
+
+  return res.json({ message: `Swaps reprocessed for ${swapped} teams`, matchId });
+});
+
 // ════════════════════════════════════════════════════════
 // MATCHES
 // ════════════════════════════════════════════════════════
@@ -738,4 +756,16 @@ router.post('/matches/:id/teams', (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
+});
+
+// ── POST /api/admin/reprocess-swaps/:matchId ─────────────────────────────────
+// Alias for process-swaps with different path to avoid routing conflicts
+router.post('/reprocess-swaps/:matchId', (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.matchId, 10);
+  db.prepare('UPDATE user_teams SET swap_processed_at = NULL WHERE match_id = ?').run(matchId);
+  const { processAutoSwaps, recomputeTeamPoints } = require('../api/syncService');
+  const swapped = processAutoSwaps(matchId);
+  recomputeTeamPoints(matchId);
+  return res.json({ message: `Swaps reprocessed for ${swapped} teams`, matchId });
 });
