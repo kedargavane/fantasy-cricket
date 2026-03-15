@@ -260,3 +260,30 @@
   0%,100% { box-shadow: 0 0 0 0 rgba(0,229,255,0); }
   50%      { box-shadow: 0 0 10px 3px rgba(0,229,255,0.35); }
 }
+
+/* ── Header submit button ─────────────────────────────── */
+.header-submit-btn {
+  padding: 5px 10px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: not-allowed;
+  white-space: nowrap;
+  opacity: 0.4;
+  transition: all 0.2s;
+}
+.header-submit-ready {
+  background: #00e5ff !important;
+  border-color: #00e5ff !important;
+  color: #05101f !important;
+  cursor: pointer !important;
+  opacity: 1 !important;
+  animation: hdr-glow 1.5s infinite;
+}
+@keyframes hdr-glow {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,229,255,0); }
+  50%      { box-shadow: 0 0 8px 3px rgba(0,229,255,0.4); }
+}

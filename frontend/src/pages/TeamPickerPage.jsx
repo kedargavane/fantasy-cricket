@@ -233,6 +233,16 @@ export default function TeamPickerPage() {
         <div className="picker-counters">
           <span className={`picker-counter ${mainCount === 11 ? 'counter-done' : ''}`}>{mainCount}/11</span>
           <span className={`picker-counter counter-bak ${backupCount === 2 ? 'counter-done' : ''}`}>{backupCount}/2</span>
+          <button
+            className={`header-submit-btn ${canSubmit ? 'header-submit-ready' : ''}`}
+            disabled={!canSubmit || saving}
+            onClick={submit}
+          >
+            {saving
+              ? <span className="spinner" style={{width:12,height:12,borderWidth:2}} />
+              : canSubmit ? 'Submit ✓' : !captainId ? 'Pick C' : !vcId ? 'Pick VC' : 'Submit'
+            }
+          </button>
         </div>
       </div>
 
