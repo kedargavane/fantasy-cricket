@@ -81,6 +81,29 @@ export default function LiveScorePage() {
   const scoreMap = {};
   scores.forEach(s => { scoreMap[s.player_id] = s; });
 
+  // Compute live prize preview
+  function computePrizes(lb) {
+    const n = lb.length;
+    if (n < 2) return [];
+    const entryUnits = lb[0]?.entry_units || 300;
+    const totalPool  = n * entryUnits;
+    const pcts       = n >= 5 ? [0.50, 0.30, 0.20] : [0.60, 0.40];
+    const numWinners = pcts.length;
+    const grossByPos = pcts.map(p => Math.floor(totalPool * p));
+    grossByPos[0]   += totalPool - grossByPos.reduce((a,b)=>a+b,0);
+
+    return lb.map((entry, i) => {
+      const pos    = i + 1;
+      const gross  = pos <= numWinners ? grossByPos[pos-1] : 0;
+      const net    = gross - entryUnits;
+      return { ...entry, gross, net, isWinner: pos <= numWinners };
+    });
+  }
+  const prizeData  = computePrizes(leaderboard);
+  const entryUnits = leaderboard[0]?.entry_units || 300;
+  const totalPool  = leaderboard.length * entryUnits;
+  const numWinners = leaderboard.length >= 5 ? 3 : leaderboard.length >= 2 ? 2 : 0;
+
   // Build innings data from scores
   const innings = {};
   scores.forEach(s => {
@@ -165,6 +188,32 @@ export default function LiveScorePage() {
               ))}
             </div>
           )}
+          {/* Prize pool card */}
+          {leaderboard.length >= 2 && (
+            <div className="ls-prize-card">
+              <div className="ls-prize-header">
+                <span className="ls-prize-title">Prize Pool</span>
+                <span className="ls-prize-total">{totalPool} units · {leaderboard.length} players</span>
+              </div>
+              {prizeData.filter(e => e.isWinner).map((e, i) => (
+                <div key={e.user_id} className="ls-prize-row ls-prize-winner">
+                  <span className="ls-prize-pos">{i===0?'🥇':i===1?'🥈':'🥉'}</span>
+                  <span className="ls-prize-name">{e.name}</span>
+                  <span className="ls-prize-share">{i===0?'50':i===1?'30':'20'}% · {e.gross}u</span>
+                  <span className="ls-prize-net ls-net-win">+{e.net}</span>
+                </div>
+              ))}
+              <div className="ls-prize-row ls-prize-loser">
+                <span className="ls-prize-pos" style={{fontSize:'0.7rem'}}>#{numWinners+1}–{leaderboard.length}</span>
+                <span className="ls-prize-name" style={{color:'var(--color-text-secondary)',fontSize:'0.8rem'}}>
+                  {prizeData.filter(e => !e.isWinner).map(e => e.name.split(' ')[0]).join(', ')}
+                </span>
+                <span className="ls-prize-share"></span>
+                <span className="ls-prize-net ls-net-loss">−{entryUnits}</span>
+              </div>
+            </div>
+          )}
+
           {leaderboard.length === 0
             ? <div className="ls-empty">No entries yet</div>
             : leaderboard.map((entry, i) => (

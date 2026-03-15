@@ -75,3 +75,17 @@
 .ls-compare-selectors { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
 .ls-compare-select { flex:1; font-size:0.8rem; padding:8px 10px; border-radius:var(--radius-md); border:1px solid var(--border); background:var(--bg-elevated); color:var(--text-primary); }
 .ls-compare-vs { font-size:0.75rem; font-weight:700; color:var(--text-muted); flex-shrink:0; }
+
+/* Prize pool card */
+.ls-prize-card { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:12px; overflow:hidden; }
+.ls-prize-header { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--bg-elevated); border-bottom:1px solid var(--border); }
+.ls-prize-title { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary); }
+.ls-prize-total { font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono); }
+.ls-prize-row { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:0.5px solid var(--border); }
+.ls-prize-row:last-child { border-bottom:none; }
+.ls-prize-pos { width:24px; font-size:0.875rem; flex-shrink:0; }
+.ls-prize-name { flex:1; font-size:0.8125rem; font-weight:500; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ls-prize-share { font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono); flex-shrink:0; }
+.ls-prize-net { font-size:0.875rem; font-weight:700; font-family:var(--font-mono); flex-shrink:0; min-width:44px; text-align:right; }
+.ls-net-win  { color:var(--accent-green); }
+.ls-net-loss { color:#f87171; }
