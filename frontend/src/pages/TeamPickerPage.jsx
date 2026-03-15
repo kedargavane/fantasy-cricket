@@ -64,9 +64,12 @@ export default function TeamPickerPage() {
   }, [squad]);
 
   const filteredSquad = useMemo(() => {
-    if (filter === 'ALL') return squad;
-    if (filter === 'XI')  return squad.filter(p => p.is_playing_xi);
-    return squad.filter(p => p.team === filter);
+    if (filter === 'ALL')  return squad;
+    if (filter === 'BAT')  return squad.filter(p => p.role?.toLowerCase().includes('bat') && !p.role?.toLowerCase().includes('wk'));
+    if (filter === 'BOWL') return squad.filter(p => p.role?.toLowerCase().includes('bowl'));
+    if (filter === 'ALL-R') return squad.filter(p => p.role?.toLowerCase().includes('all'));
+    if (filter === 'WK')   return squad.filter(p => p.role?.toLowerCase().includes('wk') || p.role?.toLowerCase().includes('keeper'));
+    return squad;
   }, [squad, filter]);
 
   function togglePlayer(id) {
@@ -160,46 +163,55 @@ export default function TeamPickerPage() {
       {/* ── STEP 0: Select 11 ── */}
       {step === 0 && (
         <>
-          {/* Team filter */}
+          {/* Role filter */}
           <div className="picker-filter container">
-            {['ALL', 'XI', ...teamsByName].map(f => (
+            {['ALL', 'BAT', 'BOWL', 'ALL-R', 'WK'].map(f => (
               <button
                 key={f}
                 className={`filter-btn ${filter === f ? 'active' : ''}`}
                 onClick={() => setFilter(f)}
               >
-                {f === 'XI' ? '✓ Playing XI' : f}
+                {f === 'ALL' ? 'All' : f === 'BAT' ? '🏏 Bat' : f === 'BOWL' ? '🎳 Bowl' : f === 'ALL-R' ? '⚡ AR' : '🧤 WK'}
               </button>
             ))}
           </div>
 
-          <div className="player-list container">
-            {filteredSquad.map(p => {
-              const isSelected = selected.has(p.id);
-              const disabled   = !isSelected && selected.size >= 11;
+          {/* Two-column layout — one per team */}
+          <div className="picker-teams-grid container">
+            {teamsByName.map(teamName => {
+              const teamPlayers = filteredSquad.filter(p => p.team === teamName);
+              if (teamPlayers.length === 0) return null;
+              const teamSelected = teamPlayers.filter(p => selected.has(p.id)).length;
               return (
-                <PlayerRow
-                  key={p.id}
-                  player={p}
-                  selected={isSelected}
-                  disabled={disabled}
-                  onClick={() => togglePlayer(p.id)}
-                  badge={
-                    captainId === p.id ? 'C' :
-                    vcId === p.id ? 'VC' :
-                    null
-                  }
-                />
+                <div key={teamName} className="picker-team-col">
+                  <div className="picker-team-header">
+                    <span className="picker-team-name">{teamName}</span>
+                    <span className="picker-team-count">{teamSelected} selected</span>
+                  </div>
+                  {teamPlayers.map(p => {
+                    const isSelected = selected.has(p.id);
+                    const disabled   = !isSelected && selected.size >= 11;
+                    return (
+                      <PlayerRow
+                        key={p.id}
+                        player={p}
+                        selected={isSelected}
+                        disabled={disabled}
+                        onClick={() => togglePlayer(p.id)}
+                        badge={captainId === p.id ? 'C' : vcId === p.id ? 'VC' : null}
+                        compact
+                      />
+                    );
+                  })}
+                </div>
               );
             })}
           </div>
 
           <div className="picker-footer">
-            <div className="picker-count">
-              <span className={selected.size === 11 ? 'text-green' : 'text-secondary'}>
-                {selected.size}/11 selected
-              </span>
-            </div>
+            <span className={selected.size === 11 ? 'text-green' : 'text-secondary'}>
+              {selected.size}/11 selected
+            </span>
             <button
               className="btn btn-primary"
               disabled={selected.size !== 11}
@@ -253,38 +265,34 @@ export default function TeamPickerPage() {
       {/* ── STEP 2: Assign C / VC ── */}
       {step === 2 && (
         <>
-          <p className="container text-secondary text-sm mt-4 mb-4">
-            Tap once for Captain (2×), tap again for Vice-Captain (1.5×).
-          </p>
+          <div className="container cvc-legend mt-4 mb-2">
+            <span className="cvc-legend-item cap-legend">C <span>Captain — 2× points</span></span>
+            <span className="cvc-legend-item vc-legend">VC <span>Vice Captain — 1.5× points</span></span>
+          </div>
           <div className="player-list container">
             {mainPlayers.map(p => {
               const isCap = captainId === p.id;
               const isVc  = vcId === p.id;
-              function handleTap() {
-                if (isCap) {
-                  setCaptain(null);
-                } else if (isVc) {
-                  setVc(null);
-                  setCaptain(p.id);
-                } else if (!captainId) {
-                  setCaptain(p.id);
-                } else if (!vcId) {
-                  setVc(p.id);
-                } else {
-                  // Replace VC
-                  setVc(p.id);
-                }
-              }
               return (
-                <PlayerRow
-                  key={p.id}
-                  player={p}
-                  selected={isCap || isVc}
-                  onClick={handleTap}
-                  badge={isCap ? 'C' : isVc ? 'VC' : null}
-                  badgeColor={isCap ? 'purple' : 'cyan'}
-                  highlight={isCap ? 'captain' : isVc ? 'vc' : null}
-                />
+                <div key={p.id} className={`cvc-row ${isCap ? 'is-cap' : isVc ? 'is-vc' : ''}`}>
+                  <div className="cvc-player-info">
+                    <span className="cvc-name">{p.name}</span>
+                    <span className="cvc-meta text-muted text-sm">
+                      {p.team} · {p.role}
+                    </span>
+                  </div>
+                  <div className="cvc-btns">
+                    <button
+                      className={`cvc-btn ${isCap ? 'cvc-cap-active' : ''}`}
+                      onClick={() => setCaptain(isCap ? null : p.id)}
+                    >C</button>
+                    <button
+                      className={`cvc-btn ${isVc ? 'cvc-vc-active' : ''}`}
+                      onClick={() => setVc(isVc ? null : p.id)}
+                      disabled={isCap}
+                    >VC</button>
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -347,28 +355,31 @@ export default function TeamPickerPage() {
   );
 }
 
-function PlayerRow({ player, selected, disabled, onClick, badge, badgeColor = 'cyan', highlight }) {
+function PlayerRow({ player, selected, disabled, onClick, badge, badgeColor = 'cyan', highlight, compact }) {
   return (
     <div
-      className={`player-row ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''} ${highlight || ''}`}
+      className={`player-row ${compact ? 'player-row-compact' : ''} ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''} ${highlight || ''}`}
       onClick={disabled ? undefined : onClick}
     >
       <div className="player-row-left">
-        {badge && (
-          <span className={`player-badge badge-${badgeColor}`}>{badge}</span>
-        )}
+        {badge && <span className={`player-badge badge-${badgeColor}`}>{badge}</span>}
         <div className="player-info">
-          <span className="player-name">{player.name}</span>
-          <span className="player-meta text-muted text-sm">
-            {player.team}
-            {player.role && ` · ${player.role}`}
-            {player.is_playing_xi ? (
-              <span className="xi-dot"> ✓</span>
-            ) : null}
-          </span>
+          <span className="player-name" style={compact ? {fontSize:'0.8rem'} : {}}>{player.name}</span>
+          {!compact && (
+            <span className="player-meta text-muted text-sm">
+              {player.role}
+              {player.is_playing_xi ? <span className="xi-dot"> ✓</span> : null}
+            </span>
+          )}
+          {compact && (
+            <span className="player-meta text-muted" style={{fontSize:'0.7rem'}}>
+              {player.role?.replace('Batting Allrounder','AR').replace('Bowling Allrounder','AR').replace('WK-Batsman','WK')}
+              {player.is_playing_xi ? <span className="xi-dot"> ✓</span> : null}
+            </span>
+          )}
         </div>
       </div>
-      <div className={`player-check ${selected ? 'checked' : ''}`}>
+      <div className={`player-check ${selected ? 'checked' : ''}`} style={compact ? {width:18,height:18,fontSize:'0.65rem'} : {}}>
         {selected && '✓'}
       </div>
     </div>
