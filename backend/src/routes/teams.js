@@ -398,3 +398,50 @@ router.get('/compare/:matchId', requireAuth, (req, res) => {
     },
   });
 });
+
+// ── POST /api/teams/match/:matchId ───────────────────────────────────────────
+// Alias used by frontend — injects matchId into body and calls main submit
+router.post('/match/:matchId', requireAuth, async (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.matchId, 10);
+  const userId  = req.user.id;
+  const { playerIds, backupIds, captainId, viceCaptainId } = req.body;
+
+  if (!Array.isArray(playerIds) || playerIds.length !== 11) {
+    return res.status(400).json({ error: '11 playerIds required' });
+  }
+  if (!Array.isArray(backupIds) || backupIds.length !== 2) {
+    return res.status(400).json({ error: '2 backupIds required' });
+  }
+  if (!captainId || !viceCaptainId) {
+    return res.status(400).json({ error: 'captainId and viceCaptainId required' });
+  }
+
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+  if (match.status !== 'upcoming') return res.status(400).json({ error: 'Team selection is locked' });
+
+  const existing = db.prepare('SELECT id FROM user_teams WHERE user_id=? AND match_id=?').get(userId, matchId);
+  if (existing) return res.status(400).json({ error: 'Team already submitted. Use PUT to update.' });
+
+  const saveTeam = db.transaction(() => {
+    const mc = db.prepare('SELECT entry_units FROM match_config WHERE match_id=?').get(matchId);
+    const result = db.prepare(`
+      INSERT INTO user_teams (user_id, match_id, captain_id, vice_captain_id, resolved_captain_id, resolved_vice_captain_id, locked_at)
+      VALUES (?,?,?,?,?,?,datetime('now'))
+    `).run(userId, matchId, captainId, viceCaptainId, captainId, viceCaptainId);
+    const utId = result.lastInsertRowid;
+    const ins = db.prepare('INSERT INTO user_team_players (user_team_id,player_id,is_backup,backup_order) VALUES (?,?,?,?)');
+    for (const pid of playerIds) ins.run(utId, pid, 0, null);
+    backupIds.forEach((pid, i) => ins.run(utId, pid, 1, i + 1));
+    db.prepare('INSERT OR IGNORE INTO season_leaderboard (season_id,user_id) VALUES (?,?)').run(match.season_id, userId);
+    return utId;
+  });
+
+  try {
+    const utId = saveTeam();
+    return res.status(201).json({ message: 'Team submitted', userTeamId: utId });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});

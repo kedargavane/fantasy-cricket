@@ -190,7 +190,7 @@
 .tray-header  { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
 .tray-title   { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
 .tray-hint    { font-size: 0.68rem; color: var(--accent-gold); font-weight: 600; }
-.tray-chips   { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 7px; min-height: 22px; max-height: 52px; overflow: hidden; }
+.tray-chips   { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 7px; min-height: 22px; max-height: 44px; overflow: hidden; }
 .tray-chip    { padding: 2px 6px; border-radius: 20px; font-size: 0.62rem; font-weight: 500; border: 1px solid transparent; }
 .chip-main    { background: rgba(0,229,255,0.1); border-color: rgba(0,229,255,0.25); color: var(--accent-primary); }
 .chip-cap     { background: rgba(167,139,250,0.15); border-color: rgba(167,139,250,0.35); color: #a78bfa; }
@@ -211,6 +211,7 @@
   padding: 10px 20px;
   font-size: 0.875rem;
   font-weight: 700;
+  min-width: 140px;
 }
 .tray-submit-btn:not(:disabled) {
   background: var(--accent-primary);
@@ -221,4 +222,41 @@
 @keyframes glow {
   0%,100% { box-shadow: 0 0 0 0 rgba(0,229,255,0); }
   50%      { box-shadow: 0 0 8px 2px rgba(0,229,255,0.3); }
+}
+
+/* ── Submit row — always visible at top of tray ───────── */
+.tray-submit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.tray-status { flex: 1; font-size: 0.75rem; }
+.status-ready   { color: var(--accent-green); font-weight: 600; }
+.status-pending { color: var(--accent-gold); }
+
+.tray-submit-btn {
+  flex-shrink: 0;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: not-allowed;
+  transition: all 0.2s;
+}
+.tray-submit-ready {
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--bg-base) !important;
+  cursor: pointer !important;
+  animation: glow-submit 2s infinite;
+}
+.tray-submit-ready:active { transform: scale(0.97); }
+@keyframes glow-submit {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,229,255,0); }
+  50%      { box-shadow: 0 0 10px 3px rgba(0,229,255,0.35); }
 }
