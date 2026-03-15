@@ -166,6 +166,51 @@ router.post('/discover/approve', async (req, res) => {
   return res.status(201).json({ message: 'Match approved and added to season', match });
 });
 
+// ── POST /api/admin/matches/:id/sync-scorecard ───────────────────────────────
+// Accepts raw CricAPI scorecard JSON pushed from local Mac poller
+// Bypasses Railway→CricAPI network issues
+router.post('/matches/:id/sync-scorecard', async (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const scorecardData = req.body;
+
+  if (!scorecardData || !scorecardData.data) {
+    return res.status(400).json({ error: 'Raw CricAPI scorecard data required' });
+  }
+
+  try {
+    const { upsertStats } = require('../api/syncService');
+    const { extractPlayerStats } = require('../api/cricapi');
+
+    const playerStats = extractPlayerStats(scorecardData.data);
+    if (playerStats.length === 0) {
+      return res.json({ message: 'No stats extracted yet', playerStats: 0 });
+    }
+
+    upsertStats(matchId, playerStats);
+    const { recomputeTeamPoints } = require('../api/syncService');
+    recomputeTeamPoints(matchId);
+
+    // Update last_synced
+    db.prepare("UPDATE matches SET last_synced = datetime('now') WHERE id = ?").run(matchId);
+
+    // Check if match ended
+    const matchEnded = scorecardData.data?.matchEnded || false;
+    if (matchEnded) {
+      db.prepare("UPDATE matches SET status = 'completed' WHERE id = ?").run(matchId);
+    }
+
+    return res.json({ 
+      message: 'Scorecard synced', 
+      playersUpdated: playerStats.length,
+      matchEnded 
+    });
+  } catch (err) {
+    console.error('[sync-scorecard]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ════════════════════════════════════════════════════════
 // MATCHES
 // ════════════════════════════════════════════════════════
