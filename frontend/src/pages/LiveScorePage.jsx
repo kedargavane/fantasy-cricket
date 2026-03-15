@@ -5,12 +5,12 @@ import api, { SOCKET_URL } from '../utils/api.js';
 import Spinner from '../components/common/Spinner.jsx';
 import './LiveScorePage.css';
 
-const TABS = ['Leaderboard', 'Match Score', 'My Team', 'All Players'];
+const TABS = ['Leaderboard', 'Match Score', 'Compare', 'All Players'];
 
 export default function LiveScorePage() {
-  const { matchId }  = useParams();
-  const navigate     = useNavigate();
-  const socketRef    = useRef(null);
+  const { matchId } = useParams();
+  const navigate    = useNavigate();
+  const socketRef   = useRef(null);
 
   const [match, setMatch]       = useState(null);
   const [myTeam, setMyTeam]     = useState(null);
@@ -21,6 +21,8 @@ export default function LiveScorePage() {
   const [tab, setTab]           = useState(0);
   const [viewTeam, setViewTeam] = useState(null);
   const [loadingTeam, setLoadingTeam] = useState(false);
+  const [compareA, setCompareA] = useState(0);
+  const [compareB, setCompareB] = useState(0);
 
   useEffect(() => {
     loadData();
@@ -28,11 +30,11 @@ export default function LiveScorePage() {
     return () => socketRef.current?.disconnect();
   }, [matchId]);
 
-  async function loadUserTeam(userId, userName) {
+  async function loadUserTeam(userId, userName, totalPts) {
     setLoadingTeam(true);
     try {
       const res = await api.get(`/teams/user/${userId}/match/${matchId}`);
-      setViewTeam({ name: userName, players: res.data.team.players, total: res.data.team.total_fantasy_points });
+      setViewTeam({ name: userName, players: res.data.team.players, total: totalPts });
     } catch {}
     finally { setLoadingTeam(false); }
   }
@@ -56,253 +58,242 @@ export default function LiveScorePage() {
   }
 
   function setupSocket() {
-    const socket = io(SOCKET_URL, { transports: ['websocket'] });
-    socketRef.current = socket;
-    socket.emit('joinMatch', matchId);
-    socket.on('statsUpdate', async () => {
-      const [sRes, lRes] = await Promise.all([
-        api.get(`/matches/${matchId}/scores`),
-        api.get(`/matches/${matchId}/leaderboard`),
-      ]);
-      setScores(sRes.data.scores || []);
-      setBoard(lRes.data.leaderboard || []);
-      setLastUpdate(new Date());
-    });
+    try {
+      const socket = io(SOCKET_URL, { transports: ['websocket'] });
+      socketRef.current = socket;
+      socket.emit('joinMatch', matchId);
+      socket.on('statsUpdate', async () => {
+        try {
+          const [sRes, lRes] = await Promise.all([
+            api.get(`/matches/${matchId}/scores`),
+            api.get(`/matches/${matchId}/leaderboard`),
+          ]);
+          setScores(sRes.data.scores || []);
+          setBoard(lRes.data.leaderboard || []);
+          setLastUpdate(new Date());
+        } catch {}
+      });
+    } catch {}
   }
 
   if (loading) return <Spinner center />;
 
-  // User team view
-  if (viewTeam) return (
-    <div className="page" style={{paddingBottom:80}}>
-      <div style={{display:'flex',alignItems:'center',gap:12,padding:'10px 16px',background:'var(--bg-surface)',borderBottom:'1px solid var(--border)',position:'sticky',top:0,zIndex:20}}>
-        <button className="btn-back" onClick={() => setViewTeam(null)}>‹</button>
-        <div style={{flex:1}}>
-          <div style={{fontSize:'0.9rem',fontWeight:600}}>{viewTeam.name}'s Team</div>
-          <div style={{fontSize:'0.75rem',color:'var(--text-muted)'}}>{viewTeam.total} pts</div>
-        </div>
-      </div>
-      <div style={{padding:'0 16px'}}>
-        {viewTeam.players.filter(p => !p.is_backup).map(p => (
-          <PlayerScoreRow key={p.id} player={p} stats={{fantasy_points:p.fantasy_points,is_playing_xi:p.is_playing_xi}} pts={p.fantasy_points} role={p.role_in_team} isBackup={false} />
-        ))}
-        {viewTeam.players.some(p => p.is_backup) && (
-          <p style={{fontSize:'0.75rem',color:'var(--text-muted)',margin:'12px 0 4px',textTransform:'uppercase',letterSpacing:'0.05em'}}>Backups</p>
-        )}
-        {viewTeam.players.filter(p => p.is_backup).map(p => (
-          <PlayerScoreRow key={p.id} player={p} stats={{fantasy_points:p.fantasy_points,is_playing_xi:p.is_playing_xi}} pts={p.fantasy_points} role={p.role_in_team} isBackup={true} />
-        ))}
-      </div>
-    </div>
-  );
-
   const scoreMap = {};
   scores.forEach(s => { scoreMap[s.player_id] = s; });
 
-  // Innings from scores
+  // Build innings data from scores
   const innings = {};
   scores.forEach(s => {
-    if (!innings[s.team]) innings[s.team] = { runs:0, wickets:0, overs:0, batters:[], bowlers:[] };
+    if (!innings[s.team]) innings[s.team] = { runs: 0, wickets: 0, batters: [], bowlers: [] };
     const t = innings[s.team];
-    if (s.runs > 0 || s.balls_faced > 0) {
+    if ((s.runs > 0 || s.balls_faced > 0) && s.dismissal_type !== 'dnb') {
       t.runs += s.runs || 0;
-      if (s.dismissal_type && s.dismissal_type !== 'notout' && s.dismissal_type !== 'dnb') t.wickets++;
+      if (s.dismissal_type && !['notout','dnb',''].includes(s.dismissal_type)) t.wickets++;
       t.batters.push(s);
     }
     if (s.overs_bowled > 0) t.bowlers.push(s);
   });
 
-  return (
-    <div className="live-page">
-      {/* Header */}
-      <div className="live-header">
-        <div className="live-header-top">
-          <button className="btn-back" onClick={() => navigate('/')}>‹</button>
-          <div className="live-match-info">
-            <span className="live-teams">{match?.team_a} vs {match?.team_b}</span>
-            {match?.status === 'live' && <span className="live-badge">● LIVE</span>}
-          </div>
-          <div style={{display:'flex',gap:6}}>
-            {(match?.status === 'live' || match?.status === 'completed') && (
-              <button className="btn btn-sm btn-ghost" onClick={() => navigate(`/match/${matchId}/compare`)}>⚔</button>
-            )}
-            {match?.status === 'completed' && (
-              <button className="btn btn-sm btn-secondary" onClick={() => navigate(`/match/${matchId}/result`)}>Result</button>
-            )}
-          </div>
+  // View another user's team
+  if (viewTeam) return (
+    <div className="ls-page">
+      <div className="ls-header">
+        <button className="ls-back" onClick={() => setViewTeam(null)}>‹</button>
+        <div className="ls-header-info">
+          <span className="ls-header-title">{viewTeam.name}'s Team</span>
+          <span className="ls-header-sub">{viewTeam.total} pts</span>
         </div>
-        {lastUpdate && (
-          <div className="live-updated">Updated {lastUpdate.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</div>
-        )}
+      </div>
+      <div className="ls-content">
+        {loadingTeam
+          ? <Spinner center />
+          : <>
+              {viewTeam.players.filter(p => !p.is_backup).map(p => (
+                <PlayerRow key={p.id} player={p} pts={p.fantasy_points} role={p.role_in_team} isBackup={false} isPlaying={p.is_playing_xi} />
+              ))}
+              {viewTeam.players.some(p => p.is_backup) && (
+                <div className="ls-section-label">Backups</div>
+              )}
+              {viewTeam.players.filter(p => p.is_backup).map(p => (
+                <PlayerRow key={p.id} player={p} pts={p.fantasy_points} role={null} isBackup={true} isPlaying={p.is_playing_xi} />
+              ))}
+            </>
+        }
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="ls-page">
+
+      {/* Header */}
+      <div className="ls-header">
+        <button className="ls-back" onClick={() => navigate('/')}>‹</button>
+        <div className="ls-header-info">
+          <span className="ls-header-title">{match?.team_a} vs {match?.team_b}</span>
+          <span className="ls-header-sub">
+            {match?.status === 'live' && <span className="ls-live-dot">● </span>}
+            {match?.status === 'live' ? 'Live' : match?.status}
+            {lastUpdate && ` · ${lastUpdate.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}`}
+          </span>
+        </div>
+        <div className="ls-header-actions">
+          {match?.status === 'completed' && (
+            <button className="ls-action-btn ls-result-btn" onClick={() => navigate(`/match/${matchId}/result`)}>Result</button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className="live-tabs">
+      <div className="ls-tabs">
         {TABS.map((t, i) => (
-          <button key={t} className={`tab ${tab === i ? 'active' : ''}`} onClick={() => setTab(i)}>{t}</button>
+          <button key={t} className={`ls-tab ${tab === i ? 'active' : ''}`} onClick={() => setTab(i)}>{t}</button>
         ))}
       </div>
 
-      {/* Tab 2: My Team */}
-      {tab === 2 && (
-        <div className="live-tab-content">
-          {!myTeam ? (
-            <div className="card text-center text-secondary mt-4">
-              <p>You haven't picked a team for this match.</p>
-              {match?.status === 'upcoming' && (
-                <button className="btn btn-primary mt-3" onClick={() => navigate(`/match/${matchId}/pick`)}>Pick Team</button>
-              )}
+      {/* Tab 0: Leaderboard */}
+      {tab === 0 && (
+        <div className="ls-content">
+          {/* Match score summary */}
+          {Object.keys(innings).length > 0 && (
+            <div className="ls-match-summary">
+              {Object.entries(innings).map(([team, data]) => (
+                <div key={team} className="ls-summary-team">
+                  <span className="ls-summary-name">{team}</span>
+                  <span className="ls-summary-score">{data.runs}/{data.wickets}</span>
+                </div>
+              ))}
             </div>
-          ) : (
-            <>
-              <div className="my-team-score card mb-3">
-                <span className="text-secondary text-sm">My score</span>
-                <span className="live-pts">{myTeam.total_fantasy_points || 0} pts</span>
-              </div>
-              {myTeam.players?.filter(p => !p.is_backup).map(p => {
-                const s = scoreMap[p.id];
-                const role = p.id === (myTeam.resolved_captain_id || myTeam.captain_id) ? 'captain'
-                           : p.id === (myTeam.resolved_vice_captain_id || myTeam.vice_captain_id) ? 'vc' : null;
-                return <PlayerScoreRow key={p.id} player={p} stats={s} pts={s?.fantasy_points} role={role} isBackup={false} />;
-              })}
-              {myTeam.players?.some(p => p.is_backup) && (
-                <p className="text-muted text-sm mt-3 mb-2" style={{textTransform:'uppercase',letterSpacing:'0.05em'}}>Backups</p>
-              )}
-              {myTeam.players?.filter(p => p.is_backup).map(p => {
-                const s = scoreMap[p.id];
-                return <PlayerScoreRow key={p.id} player={p} stats={s} pts={s?.fantasy_points} role={null} isBackup={true} />;
-              })}
-            </>
           )}
+          {leaderboard.length === 0
+            ? <div className="ls-empty">No entries yet</div>
+            : leaderboard.map((entry, i) => (
+                <div key={entry.user_id} className="ls-lb-row" onClick={() => loadUserTeam(entry.user_id, entry.name, entry.total_fantasy_points)}>
+                  <span className="ls-lb-rank">
+                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}
+                  </span>
+                  <span className="ls-lb-name">{entry.name}</span>
+                  <span className="ls-lb-pts">{entry.total_fantasy_points}</span>
+                  <span className="ls-lb-chevron">›</span>
+                </div>
+              ))
+          }
         </div>
       )}
 
       {/* Tab 1: Match Score */}
       {tab === 1 && (
-        <div className="live-tab-content">
-          {scores.length === 0 ? (
-            <div className="card text-center text-secondary mt-4">Match scores not available yet</div>
-          ) : (
-            Object.entries(innings).map(([team, data]) => (
-              <div key={team} className="innings-card">
-                <div className="innings-header">
-                  <span className="innings-team">{team}</span>
-                  <span className="innings-score">{data.runs}/{data.wickets}</span>
+        <div className="ls-content">
+          {Object.keys(innings).length === 0
+            ? <div className="ls-empty">Scores not available yet</div>
+            : Object.entries(innings).map(([team, data]) => (
+                <div key={team} className="ls-innings">
+                  <div className="ls-innings-header">
+                    <span className="ls-innings-team">{team}</span>
+                    <span className="ls-innings-score">{data.runs}/{data.wickets}</span>
+                  </div>
+                  {data.batters.length > 0 && (
+                    <>
+                      <div className="ls-sc-section">Batting</div>
+                      <table className="ls-sc-table">
+                        <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
+                        <tbody>
+                          {data.batters.sort((a,b)=>(b.runs||0)-(a.runs||0)).map(p => (
+                            <tr key={p.player_id}>
+                              <td>{p.name}{p.dismissal_type==='notout'?' *':''}</td>
+                              <td className={p.runs>=50?'ls-highlight':''}>{p.runs||0}</td>
+                              <td>{p.balls_faced||0}</td>
+                              <td>{p.fours||0}</td>
+                              <td>{p.sixes||0}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
+                  {data.bowlers.length > 0 && (
+                    <>
+                      <div className="ls-sc-section">Bowling</div>
+                      <table className="ls-sc-table">
+                        <thead><tr><th>Bowler</th><th>O</th><th>W</th><th>R</th><th>Eco</th></tr></thead>
+                        <tbody>
+                          {data.bowlers.sort((a,b)=>(b.wickets||0)-(a.wickets||0)).map(p => (
+                            <tr key={p.player_id}>
+                              <td>{p.name}</td>
+                              <td>{p.overs_bowled||0}</td>
+                              <td className={p.wickets>0?'ls-highlight':''}>{p.wickets||0}</td>
+                              <td>{p.runs_conceded||0}</td>
+                              <td>{p.overs_bowled>0?(p.runs_conceded/p.overs_bowled).toFixed(1):'-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
                 </div>
-                {data.batters.length > 0 && (
-                  <>
-                    <div className="scorecard-section-label">Batting</div>
-                    <table className="scorecard-table">
-                      <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
-                      <tbody>
-                        {data.batters.sort((a,b)=>(b.runs||0)-(a.runs||0)).map(p => (
-                          <tr key={p.player_id}>
-                            <td>{p.name}{p.dismissal_type==='notout' ? ' *' : ''}</td>
-                            <td className={p.runs>=50?'highlight-stat':''}>{p.runs||0}</td>
-                            <td>{p.balls_faced||0}</td>
-                            <td>{p.fours||0}</td>
-                            <td>{p.sixes||0}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </>
-                )}
-                {data.bowlers.length > 0 && (
-                  <>
-                    <div className="scorecard-section-label">Bowling</div>
-                    <table className="scorecard-table">
-                      <thead><tr><th>Bowler</th><th>O</th><th>W</th><th>R</th><th>Eco</th></tr></thead>
-                      <tbody>
-                        {data.bowlers.sort((a,b)=>(b.wickets||0)-(a.wickets||0)).map(p => (
-                          <tr key={p.player_id}>
-                            <td>{p.name}</td>
-                            <td>{p.overs_bowled||0}</td>
-                            <td className={p.wickets>0?'highlight-stat':''}>{p.wickets||0}</td>
-                            <td>{p.runs_conceded||0}</td>
-                            <td>{p.overs_bowled>0 ? (p.runs_conceded/p.overs_bowled).toFixed(1) : '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </>
-                )}
-              </div>
-            ))
-          )}
+              ))
+          }
+        </div>
+      )}
+
+      {/* Tab 2: Compare */}
+      {tab === 2 && (
+        <div className="ls-content">
+          <div className="ls-compare-selectors">
+            <select className="ls-compare-select" value={compareA} onChange={e => setCompareA(parseInt(e.target.value))}>
+              <option value={0}>Select player A</option>
+              {leaderboard.map(e => <option key={e.user_id} value={e.user_id}>{e.name} ({e.total_fantasy_points}pts)</option>)}
+            </select>
+            <span className="ls-compare-vs">VS</span>
+            <select className="ls-compare-select" value={compareB} onChange={e => setCompareB(parseInt(e.target.value))}>
+              <option value={0}>Select player B</option>
+              {leaderboard.map(e => <option key={e.user_id} value={e.user_id}>{e.name} ({e.total_fantasy_points}pts)</option>)}
+            </select>
+          </div>
+          {compareA && compareB && compareA !== compareB
+            ? <button className="btn btn-primary btn-full mt-3" onClick={() => navigate(`/match/${matchId}/compare?userA=${compareA}&userB=${compareB}`)}>
+                Compare Teams →
+              </button>
+            : <div className="ls-empty" style={{paddingTop:16}}>Select two players above to compare</div>
+          }
         </div>
       )}
 
       {/* Tab 3: All Players */}
       {tab === 3 && (
-        <div className="live-tab-content">
-          {scores.length === 0 ? (
-            <div className="card text-center text-secondary mt-4">No player scores yet</div>
-          ) : (
-            scores.map(p => (
-              <PlayerScoreRow key={p.player_id} player={{name:p.name,team:p.team,role:p.role,id:p.player_id}} stats={p} pts={p.fantasy_points} role={null} isBackup={false} />
-            ))
-          )}
+        <div className="ls-content">
+          {scores.length === 0
+            ? <div className="ls-empty">No player scores yet</div>
+            : scores.map(p => (
+                <PlayerRow key={p.player_id}
+                  player={{name:p.name,team:p.team,id:p.player_id}}
+                  pts={p.fantasy_points} role={null} isBackup={false} isPlaying={p.is_playing_xi} />
+              ))
+          }
         </div>
       )}
 
-      {/* Tab 0: Leaderboard */}
-      {tab === 0 && (
-        <div className="live-tab-content">
-          {/* Match score summary */}
-          {scores.length > 0 && (
-            <div className="lb-score-header card mb-3">
-              {Object.entries(innings).map(([team, data]) => (
-                <div key={team} className="lb-score-team">
-                  <span className="lb-score-name">{team}</span>
-                  <span className="lb-score-runs">{data.runs}/{data.wickets}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {leaderboard.map((entry, i) => (
-            <div
-              key={entry.user_id}
-              className="lb-row card mb-2 lb-row-clickable"
-              onClick={() => loadUserTeam(entry.user_id, entry.name)}
-            >
-              <span className="lb-rank mono">
-                {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}
-              </span>
-              <div className="lb-info">
-                <span className="player-name">{entry.name}</span>
-              </div>
-              <span className="lb-pts text-cyan mono font-bold">{entry.total_fantasy_points}</span>
-              <span className="lb-chevron">›</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-function PlayerScoreRow({ player, stats, pts, role, isBackup }) {
-  const base  = stats?.fantasy_points || 0;
+function PlayerRow({ player, pts, role, isBackup, isPlaying }) {
   const multi = role === 'captain' ? 2 : role === 'vc' ? 1.5 : 1;
-  const total = Math.round(base * multi);
+  const total = pts !== undefined ? Math.round(pts * multi) : undefined;
   return (
-    <div className={`player-score-row ${isBackup ? 'backup-row' : ''} ${stats?.is_playing_xi === false ? 'not-playing' : ''}`}>
-      <div className="psr-left">
-        {role === 'captain' && <span className="role-badge captain-badge">C</span>}
-        {role === 'vc'      && <span className="role-badge vc-badge">VC</span>}
-        {!role              && <span className="role-badge empty-badge" />}
-        <div>
-          <span className="player-name">{player.name}</span>
-          <span className="text-muted text-sm"> {player.team}</span>
-          {stats?.is_playing_xi === false && <span className="not-playing-label"> · Not playing</span>}
+    <div className={`ls-player-row ${isBackup ? 'ls-backup' : ''} ${isPlaying === false ? 'ls-not-playing' : ''}`}>
+      <div className="ls-player-left">
+        {role === 'captain' && <span className="ls-badge ls-cap">C</span>}
+        {role === 'vc'      && <span className="ls-badge ls-vc">V</span>}
+        {!role              && <span className="ls-badge-empty" />}
+        <div className="ls-player-info">
+          <span className="ls-player-name">{player.name}</span>
+          <span className="ls-player-team">{player.team}{isPlaying === false ? ' · not playing' : ''}</span>
         </div>
       </div>
-      <div className="psr-right">
-        {stats?.runs > 0 && <span className="stat-pill">{stats.runs}r</span>}
-        {stats?.wickets > 0 && <span className="stat-pill">{stats.wickets}w</span>}
-        <span className={`psr-pts ${total > 0 ? 'text-cyan' : 'text-muted'}`}>{pts !== undefined ? total : '—'}</span>
-      </div>
+      <span className={`ls-player-pts ${total > 0 ? 'ls-pts-active' : ''}`}>
+        {total !== undefined ? total : '—'}
+      </span>
     </div>
   );
 }
