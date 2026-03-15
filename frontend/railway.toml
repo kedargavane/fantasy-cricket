@@ -2,6 +2,9 @@
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
+[build.args]
+VITE_API_URL = "https://fantasy-cricket-production.up.railway.app"
+
 [deploy]
 healthcheckPath = "/"
 healthcheckTimeout = 30

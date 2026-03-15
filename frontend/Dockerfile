@@ -6,16 +6,23 @@ COPY package.json ./
 RUN npm install
 
 COPY . .
+
+# Bake the backend URL at build time using sed after build
+# VITE_API_URL must be passed as build arg
+ARG VITE_API_URL=https://fantasy-cricket-production.up.railway.app
+ENV VITE_API_URL=$VITE_API_URL
+
 RUN npm run build
 
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy everything needed to run server.cjs with proxy
+# Only need express to serve static files — no proxy needed
+RUN npm install express
+
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY server.cjs package.json ./
+COPY server.cjs ./
 
 EXPOSE 3000
 

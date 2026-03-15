@@ -1,9 +1,13 @@
 import axios from 'axios';
 
-// Always use /api — server.cjs proxies it to the backend in production
-// Vite proxies it in development
+const BASE_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api';
+
+export const SOCKET_URL = import.meta.env.VITE_API_URL || '';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: BASE_URL,
   timeout: 12000,
 });
 
@@ -26,4 +30,3 @@ api.interceptors.response.use(
 );
 
 export default api;
-export const SOCKET_URL = '';
