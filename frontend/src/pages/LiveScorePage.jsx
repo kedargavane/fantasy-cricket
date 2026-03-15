@@ -5,7 +5,7 @@ import api, { SOCKET_URL } from '../utils/api.js';
 import Spinner from '../components/common/Spinner.jsx';
 import './LiveScorePage.css';
 
-const TABS = ['My Team', 'Match Score', 'All Players', 'Leaderboard'];
+const TABS = ['Leaderboard', 'Match Score', 'My Team', 'All Players'];
 
 export default function LiveScorePage() {
   const { matchId }  = useParams();
@@ -143,8 +143,8 @@ export default function LiveScorePage() {
         ))}
       </div>
 
-      {/* Tab 0: My Team */}
-      {tab === 0 && (
+      {/* Tab 2: My Team */}
+      {tab === 2 && (
         <div className="live-tab-content">
           {!myTeam ? (
             <div className="card text-center text-secondary mt-4">
@@ -184,44 +184,47 @@ export default function LiveScorePage() {
             <div className="card text-center text-secondary mt-4">Match scores not available yet</div>
           ) : (
             Object.entries(innings).map(([team, data]) => (
-              <div key={team} className="card mb-3">
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-                  <span style={{fontWeight:600,fontSize:'0.9rem'}}>{team}</span>
-                  <span style={{fontFamily:'var(--font-mono)',fontSize:'1rem',fontWeight:700,color:'var(--accent-primary)'}}>
-                    {data.runs}/{data.wickets}
-                  </span>
+              <div key={team} className="innings-card">
+                <div className="innings-header">
+                  <span className="innings-team">{team}</span>
+                  <span className="innings-score">{data.runs}/{data.wickets}</span>
                 </div>
-                {/* Batting */}
                 {data.batters.length > 0 && (
                   <>
-                    <div style={{display:'grid',gridTemplateColumns:'1fr auto auto auto auto',gap:'4px 8px',fontSize:'0.72rem',color:'var(--text-muted)',marginBottom:4,borderBottom:'1px solid var(--border)',paddingBottom:4}}>
-                      <span>Batter</span><span>R</span><span>B</span><span>4s</span><span>6s</span>
-                    </div>
-                    {data.batters.sort((a,b) => (b.runs||0)-(a.runs||0)).map(p => (
-                      <div key={p.player_id} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto auto',gap:'4px 8px',fontSize:'0.75rem',padding:'3px 0',borderBottom:'0.5px solid var(--border)'}}>
-                        <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}{p.dismissal_type==='notout'?' *':''}</span>
-                        <span style={{fontFamily:'var(--font-mono)',fontWeight:600}}>{p.runs||0}</span>
-                        <span style={{fontFamily:'var(--font-mono)',color:'var(--text-muted)'}}>{p.balls_faced||0}</span>
-                        <span style={{fontFamily:'var(--font-mono)',color:'var(--text-muted)'}}>{p.fours||0}</span>
-                        <span style={{fontFamily:'var(--font-mono)',color:'var(--text-muted)'}}>{p.sixes||0}</span>
-                      </div>
-                    ))}
+                    <div className="scorecard-section-label">Batting</div>
+                    <table className="scorecard-table">
+                      <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
+                      <tbody>
+                        {data.batters.sort((a,b)=>(b.runs||0)-(a.runs||0)).map(p => (
+                          <tr key={p.player_id}>
+                            <td>{p.name}{p.dismissal_type==='notout' ? ' *' : ''}</td>
+                            <td className={p.runs>=50?'highlight-stat':''}>{p.runs||0}</td>
+                            <td>{p.balls_faced||0}</td>
+                            <td>{p.fours||0}</td>
+                            <td>{p.sixes||0}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </>
                 )}
-                {/* Bowling */}
                 {data.bowlers.length > 0 && (
                   <>
-                    <div style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:'4px 8px',fontSize:'0.72rem',color:'var(--text-muted)',margin:'8px 0 4px',borderBottom:'1px solid var(--border)',paddingBottom:4}}>
-                      <span>Bowler</span><span>O</span><span>W</span><span>R</span>
-                    </div>
-                    {data.bowlers.sort((a,b) => (b.wickets||0)-(a.wickets||0)).map(p => (
-                      <div key={p.player_id} style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:'4px 8px',fontSize:'0.75rem',padding:'3px 0',borderBottom:'0.5px solid var(--border)'}}>
-                        <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}</span>
-                        <span style={{fontFamily:'var(--font-mono)',color:'var(--text-muted)'}}>{p.overs_bowled||0}</span>
-                        <span style={{fontFamily:'var(--font-mono)',fontWeight:600,color:p.wickets>0?'var(--accent-green)':'inherit'}}>{p.wickets||0}</span>
-                        <span style={{fontFamily:'var(--font-mono)',color:'var(--text-muted)'}}>{p.runs_conceded||0}</span>
-                      </div>
-                    ))}
+                    <div className="scorecard-section-label">Bowling</div>
+                    <table className="scorecard-table">
+                      <thead><tr><th>Bowler</th><th>O</th><th>W</th><th>R</th><th>Eco</th></tr></thead>
+                      <tbody>
+                        {data.bowlers.sort((a,b)=>(b.wickets||0)-(a.wickets||0)).map(p => (
+                          <tr key={p.player_id}>
+                            <td>{p.name}</td>
+                            <td>{p.overs_bowled||0}</td>
+                            <td className={p.wickets>0?'highlight-stat':''}>{p.wickets||0}</td>
+                            <td>{p.runs_conceded||0}</td>
+                            <td>{p.overs_bowled>0 ? (p.runs_conceded/p.overs_bowled).toFixed(1) : '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </>
                 )}
               </div>
@@ -230,8 +233,8 @@ export default function LiveScorePage() {
         </div>
       )}
 
-      {/* Tab 2: All Players */}
-      {tab === 2 && (
+      {/* Tab 3: All Players */}
+      {tab === 3 && (
         <div className="live-tab-content">
           {scores.length === 0 ? (
             <div className="card text-center text-secondary mt-4">No player scores yet</div>
@@ -243,8 +246,8 @@ export default function LiveScorePage() {
         </div>
       )}
 
-      {/* Tab 3: Leaderboard */}
-      {tab === 3 && (
+      {/* Tab 0: Leaderboard */}
+      {tab === 0 && (
         <div className="live-tab-content">
           {/* Match score summary */}
           {scores.length > 0 && (
