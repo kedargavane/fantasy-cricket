@@ -26,6 +26,15 @@ export default function LiveScorePage() {
     return () => socketRef.current?.disconnect();
   }, [matchId]);
 
+  async function loadUserTeam(userId, userName) {
+    setLoadingTeam(true);
+    try {
+      const res = await api.get(`/teams/user/${userId}/match/${matchId}`);
+      setViewTeam({ name: userName, players: res.data.team.players, total: res.data.team.total_fantasy_points });
+    } catch { }
+    finally { setLoadingTeam(false); }
+  }
+
   async function loadData() {
     try {
       const [sRes, lRes] = await Promise.all([
@@ -245,7 +254,7 @@ export default function LiveScorePage() {
             <div
               key={entry.user_id}
               className={`lb-row card mb-2 lb-row-clickable ${entry.user_id ? 'lb-me' : ''}`}
-              onClick={() => navigate(`/match/${matchId}/live?viewUser=${entry.user_id}`)}
+              onClick={() => loadUserTeam(entry.user_id, entry.name)}
             >
               <span className="lb-rank mono">
                 {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
@@ -263,9 +272,30 @@ export default function LiveScorePage() {
       )}
     </div>
   );
-}
 
-function PlayerScoreRow({ player, stats, pts, role, isBackup }) {
+  // Team view modal
+  if (viewTeam) return (
+    <div className="page" style={{paddingBottom:80}}>
+      <div className="picker-topbar" style={{display:'flex',alignItems:'center',gap:12,padding:'10px 16px',background:'var(--bg-surface)',borderBottom:'1px solid var(--border)',position:'sticky',top:0,zIndex:20}}>
+        <button className="btn-back" onClick={() => setViewTeam(null)}>‹</button>
+        <div style={{flex:1}}>
+          <div style={{fontSize:'0.9rem',fontWeight:600}}>{viewTeam.name}'s Team</div>
+          <div style={{fontSize:'0.75rem',color:'var(--text-muted)'}}>{viewTeam.total} pts</div>
+        </div>
+      </div>
+      <div style={{padding:'0 16px'}}>
+        {viewTeam.players.filter(p => !p.is_backup).map(p => (
+          <PlayerScoreRow key={p.id} player={p} stats={{fantasy_points: p.fantasy_points, is_playing_xi: p.is_playing_xi}} pts={p.fantasy_points} role={p.role_in_team} isBackup={false} />
+        ))}
+        {viewTeam.players.filter(p => p.is_backup).length > 0 && (
+          <p style={{fontSize:'0.75rem',color:'var(--text-muted)',margin:'12px 0 4px',textTransform:'uppercase',letterSpacing:'0.05em'}}>Backups</p>
+        )}
+        {viewTeam.players.filter(p => p.is_backup).map(p => (
+          <PlayerScoreRow key={p.id} player={p} stats={{fantasy_points: p.fantasy_points, is_playing_xi: p.is_playing_xi}} pts={p.fantasy_points} role={p.role_in_team} isBackup={true} />
+        ))}
+      </div>
+    </div>
+({ player, stats, pts, role, isBackup }) {
   return (
     <div className={`player-score-row ${isBackup ? 'backup-row' : ''} ${!stats?.is_playing_xi ? 'not-playing' : ''}`}>
       <div className="psr-left">

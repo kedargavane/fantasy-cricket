@@ -410,8 +410,9 @@ router.post('/match/:matchId', requireAuth, async (req, res) => {
   if (!Array.isArray(playerIds) || playerIds.length !== 11) {
     return res.status(400).json({ error: '11 playerIds required' });
   }
-  if (!Array.isArray(backupIds) || backupIds.length !== 2) {
-    return res.status(400).json({ error: '2 backupIds required' });
+  if (!Array.isArray(backupIds)) backupIds = [];
+  if (backupIds.length > 2) {
+    return res.status(400).json({ error: 'Maximum 2 backups allowed' });
   }
   if (!captainId || !viceCaptainId) {
     return res.status(400).json({ error: 'captainId and viceCaptainId required' });
@@ -425,7 +426,6 @@ router.post('/match/:matchId', requireAuth, async (req, res) => {
   if (existing) return res.status(400).json({ error: 'Team already submitted. Use PUT to update.' });
 
   const saveTeam = db.transaction(() => {
-    const mc = db.prepare('SELECT entry_units FROM match_config WHERE match_id=?').get(matchId);
     const result = db.prepare(`
       INSERT INTO user_teams (user_id, match_id, captain_id, vice_captain_id, resolved_captain_id, resolved_vice_captain_id, locked_at)
       VALUES (?,?,?,?,?,?,datetime('now'))
@@ -457,8 +457,9 @@ router.put('/:userTeamId', requireAuth, (req, res) => {
   if (!Array.isArray(playerIds) || playerIds.length !== 11) {
     return res.status(400).json({ error: '11 playerIds required' });
   }
-  if (!Array.isArray(backupIds) || backupIds.length !== 2) {
-    return res.status(400).json({ error: '2 backupIds required' });
+  if (!Array.isArray(backupIds)) backupIds = [];
+  if (backupIds.length > 2) {
+    return res.status(400).json({ error: 'Maximum 2 backups allowed' });
   }
   if (!captainId || !viceCaptainId) {
     return res.status(400).json({ error: 'captainId and viceCaptainId required' });
@@ -496,4 +497,46 @@ router.put('/:userTeamId', requireAuth, (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
+});
+
+// ── GET /api/teams/user/:userId/match/:matchId ────────────────────────────────
+// Get any user's team for a match (only after match locks)
+router.get('/user/:userId/match/:matchId', requireAuth, (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.matchId, 10);
+  const userId  = parseInt(req.params.userId, 10);
+
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  if (match.status === 'upcoming' && userId !== req.user.id) {
+    return res.status(403).json({ error: 'Teams hidden until match starts' });
+  }
+
+  const ut = db.prepare(
+    'SELECT ut.*, u.name as user_name FROM user_teams ut JOIN users u ON u.id = ut.user_id WHERE ut.match_id = ? AND ut.user_id = ?'
+  ).get(matchId, userId);
+
+  if (!ut) return res.status(404).json({ error: 'No team found' });
+
+  const players = db.prepare(`
+    SELECT p.id, p.name, p.team, p.role,
+      utp.is_backup, utp.backup_order,
+      pms.fantasy_points,
+      ms.is_playing_xi,
+      CASE
+        WHEN p.id = COALESCE(ut.resolved_captain_id, ut.captain_id) THEN 'captain'
+        WHEN p.id = COALESCE(ut.resolved_vice_captain_id, ut.vice_captain_id) THEN 'vice_captain'
+        ELSE 'normal'
+      END as role_in_team
+    FROM user_team_players utp
+    JOIN players p ON p.id = utp.player_id
+    JOIN user_teams ut ON ut.id = utp.user_team_id
+    LEFT JOIN player_match_stats pms ON pms.player_id = p.id AND pms.match_id = ut.match_id
+    LEFT JOIN match_squads ms ON ms.player_id = p.id AND ms.match_id = ut.match_id
+    WHERE utp.user_team_id = ?
+    ORDER BY utp.is_backup ASC, pms.fantasy_points DESC NULLS LAST
+  `).all(ut.id);
+
+  return res.json({ team: { ...ut, players } });
 });
