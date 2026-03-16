@@ -93,7 +93,47 @@ function startCronJobs(io) {
     }
   });
 
-  // ── 2. Auto-swap trigger — every 60 seconds ───────────────────────────────
+  // ── 2. Playing XI poller — every 5 minutes ──────────────────────────────
+  // Polls match_xi for upcoming matches within 2 hours of start
+  // Once XI confirmed, triggers auto-swaps and locks team selection
+  cron.schedule('*/5 * * * *', async () => {
+    const db = getDb();
+    const now = new Date();
+
+    // Find upcoming matches starting within next 2 hours
+    const upcomingMatches = db.prepare(`
+      SELECT id, external_match_id, start_time
+      FROM matches
+      WHERE status = 'upcoming'
+      AND start_time IS NOT NULL
+      AND datetime(start_time) <= datetime('now', '+2 hours')
+      AND datetime(start_time) >= datetime('now', '-30 minutes')
+    `).all();
+
+    for (const match of upcomingMatches) {
+      try {
+        const { syncPlayingXi } = require('../api/syncService');
+        const result = await syncPlayingXi(match.id, match.external_match_id);
+
+        if (result.success && result.xiCount === 22) {
+          // XI confirmed for both teams — lock match and trigger swaps
+          db.prepare("UPDATE matches SET status = 'live' WHERE id = ?").run(match.id);
+          const { processAutoSwaps } = require('../api/syncService');
+          processAutoSwaps(match.id);
+          console.log(`[xiPoller] Match ${match.id}: XI confirmed, match locked, swaps processed`);
+
+          // Notify connected clients
+          io.to(`match:${match.id}`).emit('xiConfirmed', { matchId: match.id });
+        } else if (result.success) {
+          console.log(`[xiPoller] Match ${match.id}: ${result.xiCount} players confirmed (waiting for full XI)`);
+        }
+      } catch (err) {
+        console.error(`[xiPoller] Match ${match.id} error:`, err.message);
+      }
+    }
+  });
+
+  // ── 3. Auto-swap trigger — every 60 seconds ───────────────────────────────
   const swapTrigger = cron.schedule('* * * * *', () => {
     const db = getDb();
     const pendingSwapMatches = db.prepare(`

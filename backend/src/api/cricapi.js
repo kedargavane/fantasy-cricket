@@ -119,6 +119,19 @@ async function fetchMatchScorecard(matchId) {
  * Fetch basic match info (status, start time).
  * Used by the polling cron to decide whether to do a full sync.
  */
+async function fetchMatchXi(matchId) {
+  const data = await cricGet('match_xi', { id: matchId });
+  const teams = data.data || [];
+  // Returns array of {teamName, players: [{id, name, role, ...}]}
+  const players = [];
+  for (const team of teams) {
+    for (const p of (team.players || [])) {
+      if (p.id) players.push({ id: p.id, name: p.name, isPlayingXi: true });
+    }
+  }
+  return players; // list of confirmed XI players
+}
+
 async function fetchMatchInfo(matchId) {
   const data = await cricGet('match_info', { id: matchId });
   const match = data.data || {};
@@ -296,6 +309,7 @@ function normaliseDismissal(desc) {
 module.exports = {
   fetchSeriesMatches,
   fetchMatchSquad,
+  fetchMatchXi,
   fetchMatchScorecard,
   fetchMatchInfo,
   extractPlayerStats,     // exported for testing

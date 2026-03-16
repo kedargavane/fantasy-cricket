@@ -356,6 +356,56 @@ function recomputeTeamPoints(matchId) {
   recomputeAll();
 }
 
+// ── Sync Playing XI from match_xi endpoint ───────────────────────────────────
+/**
+ * Fetches confirmed Playing XI from CricAPI and updates is_playing_xi
+ * in match_squads. Marks non-XI players as false.
+ * Called by cron ~1hr before match and repeated until XI confirmed.
+ */
+async function syncPlayingXi(matchId, externalMatchId) {
+  const db = getDb();
+  try {
+    const { fetchMatchXi } = require('./cricapi');
+    const xiPlayers = await fetchMatchXi(externalMatchId);
+
+    if (!xiPlayers || xiPlayers.length === 0) {
+      return { success: false, reason: 'XI not announced yet' };
+    }
+
+    // Get all players in the squad by external ID
+    const squadPlayers = db.prepare(`
+      SELECT p.id, p.external_player_id
+      FROM match_squads ms
+      JOIN players p ON p.id = ms.player_id
+      WHERE ms.match_id = ?
+    `).all(matchId);
+
+    // Build set of confirmed XI external IDs
+    const xiIds = new Set(xiPlayers.map(p => p.id.toLowerCase()));
+
+    // Update is_playing_xi for each squad player
+    const updateXi = db.prepare(
+      'UPDATE match_squads SET is_playing_xi = ? WHERE match_id = ? AND player_id = ?'
+    );
+
+    const updateAll = db.transaction(() => {
+      for (const sp of squadPlayers) {
+        const extId = (sp.external_player_id || '').toLowerCase();
+        const isXi  = xiIds.has(extId) ? 1 : 0;
+        updateXi.run(isXi, matchId, sp.id);
+      }
+    });
+
+    updateAll();
+
+    console.log(`[syncXi] Match ${matchId}: ${xiPlayers.length} XI players confirmed`);
+    return { success: true, xiCount: xiPlayers.length };
+  } catch (err) {
+    console.error(`[syncXi] Match ${matchId} error:`, err.message);
+    return { success: false, reason: err.message };
+  }
+}
+
 // ── Full live sync (called by cron) ───────────────────────────────────────────
 
 /**
@@ -393,6 +443,7 @@ async function syncLiveMatch(matchId, externalMatchId) {
 module.exports = {
   upsertMatch,
   upsertSquad,
+  syncPlayingXi,
   upsertStats,
   processAutoSwaps,
   recomputeTeamPoints,

@@ -880,3 +880,21 @@ router.delete('/users/:id', (req, res) => {
   deleteUser();
   return res.json({ message: `User ${user.email} deleted` });
 });
+
+// ── POST /api/admin/matches/:id/sync-xi ──────────────────────────────────────
+// Manually trigger Playing XI sync from CricAPI
+router.post('/matches/:id/sync-xi', async (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  try {
+    const { syncPlayingXi } = require('../api/syncService');
+    const result = await syncPlayingXi(matchId, match.external_match_id);
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
