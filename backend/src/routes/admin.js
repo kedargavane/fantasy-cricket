@@ -331,6 +331,24 @@ router.post('/matches/:id/squad', (req, res) => {
   return res.json({ squad, playingXiCount });
 });
 
+// ── POST /api/admin/matches/:id/sync-live ────────────────────────────────────
+// Manually trigger a live scorecard sync for a match
+router.post('/matches/:id/sync-live', async (req, res) => {
+  const matchId = parseInt(req.params.id, 10);
+  const db = getDb();
+
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  try {
+    const { syncLiveMatch } = require('../api/syncService');
+    const result = await syncLiveMatch(matchId, match.external_match_id);
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/admin/matches/:id/sync-squad ────────────────────────────────────
 // Pull squad from CricAPI automatically
 router.post('/matches/:id/sync-squad', async (req, res) => {
@@ -998,3 +1016,68 @@ router.post('/sync-all-squads', async (req, res) => {
 
   return res.json({ message: `Processed ${matches.length} matches`, results });
 });
+
+// ── POST /api/admin/matches/:id/squad/manual ──────────────────────────────────
+// Manually add a player to a match squad
+// Will be overwritten if CricAPI sync runs later
+router.post('/matches/:id/squad/manual', (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const { name, team, role } = req.body;
+
+  if (!name?.trim() || !team?.trim()) {
+    return res.status(400).json({ error: 'name and team are required' });
+  }
+
+  const match = db.prepare('SELECT id FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  // Generate a manual external ID so it doesn't conflict with real CricAPI IDs
+  const externalId = `manual-${matchId}-${name.trim().toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+
+  // Upsert player
+  db.prepare(`
+    INSERT INTO players (name, team, role, external_player_id)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(external_player_id) DO UPDATE SET
+      name = excluded.name, team = excluded.team, role = excluded.role
+  `).run(name.trim(), team.trim(), normaliseRole(role) || 'batsman', externalId);
+
+  const player = db.prepare('SELECT id FROM players WHERE external_player_id = ?').get(externalId);
+
+  // Add to match squad
+  db.prepare(`
+    INSERT INTO match_squads (match_id, player_id, is_playing_xi)
+    VALUES (?, ?, 0)
+    ON CONFLICT(match_id, player_id) DO NOTHING
+  `).run(matchId, player.id);
+
+  const squad = db.prepare(`
+    SELECT p.*, ms.is_playing_xi FROM match_squads ms
+    JOIN players p ON p.id = ms.player_id WHERE ms.match_id = ?
+    ORDER BY p.team, p.name
+  `).all(matchId);
+
+  return res.json({ message: `Added ${name}`, synced: squad.length, squad });
+});
+
+// ── DELETE /api/admin/matches/:id/squad/:playerId ─────────────────────────────
+// Remove a player from a match squad
+router.delete('/matches/:id/squad/:playerId', (req, res) => {
+  const db      = getDb();
+  const matchId  = parseInt(req.params.id, 10);
+  const playerId = parseInt(req.params.playerId, 10);
+
+  db.prepare('DELETE FROM match_squads WHERE match_id = ? AND player_id = ?').run(matchId, playerId);
+  return res.json({ message: 'Player removed from squad' });
+});
+
+function normaliseRole(role) {
+  if (!role) return null;
+  const r = role.toLowerCase();
+  if (r.includes('keeper') || r.includes('wk'))  return 'wicketkeeper';
+  if (r.includes('all'))                          return 'allrounder';
+  if (r.includes('bowl'))                         return 'bowler';
+  if (r.includes('bat'))                          return 'batsman';
+  return 'batsman';
+}

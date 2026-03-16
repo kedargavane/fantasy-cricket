@@ -75,12 +75,13 @@ function startCronJobs(io) {
         if (currentBalls > lastBalls) {
           // New ball bowled — do full scorecard fetch
           console.log(`[livePoller] Match ${match.id}: ball ${lastBalls}→${currentBalls}, syncing...`);
+          // Always advance ball count so poller doesn't retry same balls if scorecard fails
+          matchBallCount.set(match.id, currentBalls);
+          db.prepare('UPDATE matches SET last_ball_count = ? WHERE id = ?').run(currentBalls, match.id);
+
           const result = await syncLiveMatch(match.id, match.external_match_id);
 
           if (result.success) {
-            matchBallCount.set(match.id, currentBalls);
-            // Save ball count for over tracking in snapshots
-            db.prepare('UPDATE matches SET last_ball_count = ? WHERE id = ?').run(currentBalls, match.id);
             io.to(`match:${match.id}`).emit('statsUpdate', {
               matchId: match.id, playersUpdated: result.playersUpdated,
               timestamp: new Date().toISOString(),

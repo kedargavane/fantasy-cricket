@@ -486,6 +486,11 @@ async function syncLiveMatch(matchId, externalMatchId) {
   try {
     const { matchInfo, playerStats } = await cricapi.fetchMatchScorecard(externalMatchId);
 
+    if (!playerStats || playerStats.length === 0) {
+      console.log(`[syncLiveMatch] matchId=${matchId}: scorecard returned 0 players, skipping`);
+      return { success: false, error: 'No player stats in scorecard' };
+    }
+
     // Upsert stats
     upsertStats(matchId, playerStats);
 
@@ -498,6 +503,7 @@ async function syncLiveMatch(matchId, externalMatchId) {
       UPDATE matches SET status = ?, last_synced = datetime('now') WHERE id = ?
     `).run(newStatus, matchId);
 
+    console.log(`[syncLiveMatch] matchId=${matchId}: ${playerStats.length} players synced, status=${newStatus}`);
     return { success: true, status: newStatus, playersUpdated: playerStats.length };
   } catch (err) {
     console.error(`[syncLiveMatch] matchId=${matchId} error:`, err.message);

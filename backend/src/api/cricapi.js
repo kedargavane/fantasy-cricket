@@ -134,6 +134,26 @@ async function fetchMatchXi(matchId) {
   return players; // list of confirmed XI players
 }
 
+// Fetch live scores from cricScore endpoint — works for all matches including LLC
+// Returns match-level scores (not per-player)
+async function fetchCricScore(externalMatchId) {
+  const data = await cricGet('cricScore', {});
+  const matches = data.data || [];
+  const match = matches.find(m => m.id === externalMatchId);
+  if (!match) return null;
+  return {
+    externalMatchId: match.id,
+    status:     match.status || '',
+    ms:         match.ms || '',   // 'live' | 'fixture' | 'result'
+    t1:         match.t1  || '',
+    t2:         match.t2  || '',
+    t1Score:    match.t1s || '',  // e.g. "152/9 (20)"
+    t2Score:    match.t2s || '',
+    matchEnded: match.ms === 'result',
+    matchStarted: match.ms === 'live' || match.ms === 'result',
+  };
+}
+
 async function fetchMatchInfo(matchId) {
   const data = await cricGet('match_info', { id: matchId });
   const match = data.data || {};
@@ -311,6 +331,7 @@ function normaliseDismissal(desc) {
 module.exports = {
   fetchSeriesMatches,
   fetchMatchSquad,
+  fetchCricScore,
   fetchMatchXi,
   fetchMatchScorecard,
   fetchMatchInfo,
