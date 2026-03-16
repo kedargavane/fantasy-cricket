@@ -9,7 +9,9 @@ export default function HomePage() {
   const { user, seasons, activeSeason, switchSeason } = useAuth();
   const navigate = useNavigate();
   const [matches, setMatches]     = useState([]);
-  const [liveScore, setLiveScore] = useState(null); // {teamA: '145/6', teamB: ''}
+  const [liveScore, setLiveScore] = useState(null);
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
+  const [showAllRecent, setShowAllRecent] = useState(false); // {teamA: '145/6', teamB: ''}
   const [leaderboard, setBoard]   = useState([]);
   const [loading, setLoading]     = useState(true);
 
@@ -51,8 +53,10 @@ export default function HomePage() {
   }
 
   const liveMatch     = matches.find(m => m.status === 'live');
-  const upcomingMatches = matches.filter(m => m.status === 'upcoming').slice(0, 3);
-  const recentMatches = matches.filter(m => m.status === 'completed').slice(-3).reverse();
+  const allUpcoming = matches.filter(m => m.status === 'upcoming');
+  const allRecent = matches.filter(m => m.status === 'completed').reverse();
+  const upcomingMatches = showAllUpcoming ? allUpcoming : allUpcoming.slice(0, 3);
+  const recentMatches = showAllRecent ? allRecent : allRecent.slice(0, 3);
 
   if (loading) return <Spinner center />;
 
@@ -131,6 +135,15 @@ export default function HomePage() {
               {upcomingMatches.map(m => (
                 <MatchCard key={m.id} match={m} navigate={navigate} />
               ))}
+              {allUpcoming.length > 3 && (
+                <button
+                  onClick={() => setShowAllUpcoming(!showAllUpcoming)}
+                  className="btn btn-ghost btn-sm"
+                  style={{width:'100%',marginTop:4,fontSize:'0.78rem',color:'var(--accent-primary)'}}
+                >
+                  {showAllUpcoming ? 'Show less' : `See all ${allUpcoming.length} upcoming →`}
+                </button>
+              )}
             </div>
           </section>
         )}
@@ -166,6 +179,15 @@ export default function HomePage() {
               {recentMatches.map(m => (
                 <MatchCard key={m.id} match={m} navigate={navigate} />
               ))}
+              {allRecent.length > 3 && (
+                <button
+                  onClick={() => setShowAllRecent(!showAllRecent)}
+                  className="btn btn-ghost btn-sm"
+                  style={{width:'100%',marginTop:4,fontSize:'0.78rem',color:'var(--accent-primary)'}}
+                >
+                  {showAllRecent ? 'Show less' : `See all ${allRecent.length} results →`}
+                </button>
+              )}
             </div>
           </section>
         )}
