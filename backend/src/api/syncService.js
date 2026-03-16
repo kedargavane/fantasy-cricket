@@ -526,7 +526,8 @@ async function syncLiveMatch(matchId, externalMatchId) {
   const db = getDb();
 
   try {
-    const { matchInfo, playerStats } = await cricapi.fetchMatchScorecard(externalMatchId);
+    const match = db.prepare('SELECT team_a, team_b FROM matches WHERE id = ?').get(matchId);
+    const { matchInfo, playerStats } = await cricapi.fetchMatchScorecard(externalMatchId, match?.team_a, match?.team_b);
 
     if (!playerStats || playerStats.length === 0) {
       console.log(`[syncLiveMatch] matchId=${matchId}: scorecard returned 0 players, skipping`);

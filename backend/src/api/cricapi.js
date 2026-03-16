@@ -99,7 +99,7 @@ async function fetchMatchSquad(matchId) {
  * Fetch live / completed scorecard for a match.
  * Maps to PLAYER_MATCH_STATS table.
  */
-async function fetchMatchScorecard(matchId) {
+async function fetchMatchScorecard(matchId, teamA, teamB) {
   const data = await cricGet('match_scorecard', { id: matchId });
   const match = data.data || {};
 
@@ -234,11 +234,28 @@ function extractPlayerStats(match) {
     }
   }
 
+  // Get match teams from match info for reliable bowling team assignment
+  const matchTeamA = (match.teams?.[0] || '').trim();
+  const matchTeamB = (match.teams?.[1] || '').trim();
+
   for (const innings of scorecard) {
-    const inningStr  = innings.inning || innings.inningsTeam || '';
+    const inningStr   = innings.inning || innings.inningsTeam || '';
     const battingTeam = inningStr.replace(/\s+Inning\s+\d+.*$/i, '').trim();
-    // Bowling team is the other team in this innings
-    const bowlingTeam = allTeams.find(t => t !== battingTeam) || allTeams[1] || '';
+
+    // Bowling team: use match teams if available, otherwise fall back to allTeams
+    let bowlingTeam = allTeams.find(t => t !== battingTeam) || allTeams[1] || '';
+
+    // Better: use match.teams to find the opposition
+    if (matchTeamA && matchTeamB) {
+      const battingNorm = battingTeam.toLowerCase();
+      const teamANorm   = matchTeamA.toLowerCase();
+      const teamBNorm   = matchTeamB.toLowerCase();
+      if (teamANorm.includes(battingNorm) || battingNorm.includes(teamANorm)) {
+        bowlingTeam = matchTeamB;
+      } else if (teamBNorm.includes(battingNorm) || battingNorm.includes(teamBNorm)) {
+        bowlingTeam = matchTeamA;
+      }
+    }
 
     // ── Batting ──
     for (const batter of (innings.batting || [])) {
