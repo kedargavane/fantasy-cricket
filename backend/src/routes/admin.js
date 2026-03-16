@@ -854,3 +854,29 @@ router.post('/series/import', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
+// ── DELETE /api/admin/users/:id ───────────────────────────────────────────────
+// Delete a user and all their data
+router.delete('/users/:id', (req, res) => {
+  const db     = getDb();
+  const userId = parseInt(req.params.id, 10);
+
+  const user = db.prepare('SELECT id, email FROM users WHERE id = ?').get(userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (userId === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
+
+  const deleteUser = db.transaction(() => {
+    // Delete in dependency order
+    db.prepare(`DELETE FROM user_team_players WHERE user_team_id IN 
+      (SELECT id FROM user_teams WHERE user_id = ?)`).run(userId);
+    db.prepare('DELETE FROM prize_distributions WHERE user_team_id IN (SELECT id FROM user_teams WHERE user_id = ?)').run(userId);
+    db.prepare('DELETE FROM user_teams WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM season_memberships WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM season_leaderboard WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  });
+
+  deleteUser();
+  return res.json({ message: `User ${user.email} deleted` });
+});
