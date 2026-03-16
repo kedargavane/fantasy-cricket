@@ -326,6 +326,15 @@ function runMigrations(db) {
     )`);
     db.exec('CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status)');
+    // Migration: update Season 2 invite code to match Season 1 (GYARAH1)
+    try {
+      const s2 = db.prepare("SELECT id, invite_code FROM seasons WHERE id = 2").get();
+      if (s2 && s2.invite_code !== 'GYARAH1') {
+        db.prepare("UPDATE seasons SET invite_code = 'GYARAH1' WHERE id = 2").run();
+        console.log('[db] Season 2 invite code updated to GYARAH1');
+      }
+    } catch {}
+
     // Seed initial feedback items if table is empty
     const count = db.prepare('SELECT COUNT(*) as c FROM feedback').get().c;
     if (count === 0) {

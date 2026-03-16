@@ -18,9 +18,9 @@ router.post('/register', (req, res) => {
 
   const db = getDb();
 
-  // Validate invite code → find season
+  // Validate invite code → find latest season with this code
   const season = db.prepare(
-    'SELECT id, max_players FROM seasons WHERE invite_code = ?'
+    'SELECT id, max_players FROM seasons WHERE invite_code = ? ORDER BY id DESC LIMIT 1'
   ).get(inviteCode);
 
   if (!season) {
@@ -41,6 +41,11 @@ router.post('/register', (req, res) => {
   if (existing) {
     return res.status(400).json({ error: 'Email already registered' });
   }
+
+  // Find all seasons with this invite code (for when same code used across seasons)
+  const allSeasonsWithCode = db.prepare(
+    'SELECT id FROM seasons WHERE invite_code = ? ORDER BY id ASC'
+  ).all(inviteCode);
 
   const passwordHash = bcrypt.hashSync(password, 10);
 
