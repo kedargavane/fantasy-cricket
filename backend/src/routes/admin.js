@@ -769,3 +769,88 @@ router.post('/reprocess-swaps/:matchId', (req, res) => {
   recomputeTeamPoints(matchId);
   return res.json({ message: `Swaps reprocessed for ${swapped} teams`, matchId });
 });
+
+// ════════════════════════════════════════════════════════
+// SERIES IMPORT
+// ════════════════════════════════════════════════════════
+
+// ── POST /api/admin/series/preview ───────────────────────────────────────────
+// Fetch all matches from a CricAPI series ID and return for admin preview
+router.post('/series/preview', async (req, res) => {
+  const { seriesId } = req.body;
+  if (!seriesId) return res.status(400).json({ error: 'seriesId required' });
+
+  try {
+    const cricapi = require('../api/cricapi');
+    const data    = await cricapi.fetchSeriesMatches(seriesId);
+
+    // Mark which matches are already in our DB
+    const db = getDb();
+    const existing = new Set(
+      db.prepare('SELECT external_match_id FROM matches')
+        .all().map(r => r.external_match_id)
+    );
+
+    const matches = data.map(m => ({
+      ...m,
+      alreadyAdded: existing.has(m.externalMatchId),
+    }));
+
+    return res.json({ seriesId, matches });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/admin/series/import ────────────────────────────────────────────
+// Import selected matches from a series into a season
+router.post('/series/import', async (req, res) => {
+  const { seasonId, seriesId, matchIds } = req.body;
+  if (!seasonId || !seriesId || !Array.isArray(matchIds) || matchIds.length === 0) {
+    return res.status(400).json({ error: 'seasonId, seriesId, matchIds[] required' });
+  }
+
+  const db = getDb();
+  const season = db.prepare('SELECT id FROM seasons WHERE id = ?').get(seasonId);
+  if (!season) return res.status(404).json({ error: 'Season not found' });
+
+  try {
+    const cricapi = require('../api/cricapi');
+    const allMatches = await cricapi.fetchSeriesMatches(seriesId);
+    const selected = allMatches.filter(m => matchIds.includes(m.externalMatchId));
+
+    const results = [];
+
+    for (const m of selected) {
+      // Skip already added
+      const existing = db.prepare('SELECT id FROM matches WHERE external_match_id = ?').get(m.externalMatchId);
+      if (existing) {
+        results.push({ name: m.name, status: 'already_exists', matchId: existing.id });
+        continue;
+      }
+
+      const matchId = upsertMatch(seasonId, m);
+
+      // Auto-sync squad if available
+      let squadCount = 0;
+      if (m.hasSquad) {
+        try {
+          const players = await cricapi.fetchMatchSquad(m.externalMatchId);
+          if (players.length > 0) {
+            upsertSquad(matchId, players);
+            squadCount = players.length;
+          }
+        } catch { /* squad not available yet */ }
+      }
+
+      results.push({ name: m.name, status: 'imported', matchId, squadCount });
+    }
+
+    return res.json({
+      message: `Imported ${results.filter(r => r.status === 'imported').length} matches`,
+      results,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});

@@ -59,6 +59,10 @@ async function fetchSeriesMatches(seriesId) {
     matchType:       normaliseMatchType(m.matchType),
     status:          normaliseStatus(m.matchStarted, m.matchEnded),
     startTime:       m.dateTimeGMT || m.date || '',
+    hasSquad:        m.hasSquad || false,
+    fantasyEnabled:  m.fantasyEnabled || false,
+    matchStarted:    m.matchStarted || false,
+    matchEnded:      m.matchEnded || false,
   }));
 }
 
@@ -172,15 +176,28 @@ function extractPlayerStats(match) {
 
   const scorecard = match.scorecard || [];
 
+  // Build a map of all known teams from scorecard innings
+  // "Bangladesh Inning 1" → batting team is "Bangladesh"
+  const allTeams = [];
   for (const innings of scorecard) {
-    const teamName = innings.inningsTeam || '';
+    const inningStr = innings.inning || innings.inningsTeam || '';
+    // Extract team name — everything before " Inning"
+    const battingTeam = inningStr.replace(/\s+Inning\s+\d+.*$/i, '').trim();
+    if (battingTeam) allTeams.push(battingTeam);
+  }
+
+  for (const innings of scorecard) {
+    const inningStr  = innings.inning || innings.inningsTeam || '';
+    const battingTeam = inningStr.replace(/\s+Inning\s+\d+.*$/i, '').trim();
+    // Bowling team is the other team in this innings
+    const bowlingTeam = allTeams.find(t => t !== battingTeam) || '';
 
     // ── Batting ──
     for (const batter of (innings.batting || [])) {
       const pid = batter.batsman?.id;
       if (!pid) continue;
 
-      const p = ensurePlayer(pid, batter.batsman?.name || '', teamName);
+      const p = ensurePlayer(pid, batter.batsman?.name || '', battingTeam);
       p.runs       += parseInt(batter.r  || 0, 10);
       p.ballsFaced += parseInt(batter.b  || 0, 10);
       p.fours      += parseInt(batter['4s'] || 0, 10);
@@ -193,7 +210,7 @@ function extractPlayerStats(match) {
       // Credit LBW/bowled to the bowler
       if ((dismissal === 'lbw' || dismissal === 'bowled') && batter.bowler?.id) {
         const bowlerPid = batter.bowler.id;
-        ensurePlayer(bowlerPid, batter.bowler.name || '', '');
+        ensurePlayer(bowlerPid, batter.bowler.name || '', bowlingTeam);
         statsMap[bowlerPid].bowlerDismissals.push(dismissal);
       }
     }
@@ -203,7 +220,8 @@ function extractPlayerStats(match) {
       const pid = bowler.bowler?.id;
       if (!pid) continue;
 
-      const p = ensurePlayer(pid, bowler.bowler?.name || '', '');
+      // Bowlers bowl in the opposition's innings — assign bowling team
+      const p = ensurePlayer(pid, bowler.bowler?.name || '', bowlingTeam);
       p.oversBowled  += parseFloat(bowler.o  || 0);
       p.wickets      += parseInt(bowler.w    || 0, 10);
       p.runsConceded += parseInt(bowler.r    || 0, 10);
@@ -215,7 +233,8 @@ function extractPlayerStats(match) {
       const pid = fielder.fielder?.id;
       if (!pid) continue;
 
-      const p = ensurePlayer(pid, fielder.fielder?.name || '', '');
+      // Fielders field in the opposition's innings — assign bowling team
+      const p = ensurePlayer(pid, fielder.fielder?.name || '', bowlingTeam);
       p.catches   += parseInt(fielder.catch    || fielder.Catch    || 0, 10);
       p.stumpings += parseInt(fielder.stumping || fielder.Stumped  || 0, 10);
       p.runOuts   += parseInt(fielder.runout   || fielder.Runout   || 0, 10);

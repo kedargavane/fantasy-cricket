@@ -13,7 +13,7 @@ import SettingsPage     from './pages/SettingsPage.jsx';
 import AdminDashboard   from './pages/admin/AdminDashboard.jsx';
 import AdminMatchPage   from './pages/admin/AdminMatchPage.jsx';
 import AdminUsersPage      from './pages/admin/AdminUsersPage.jsx';
-import DiscoverMatchesPage from './pages/admin/DiscoverMatchesPage.jsx';
+import SeriesImportPage from './pages/admin/SeriesImportPage.jsx';
 import CompareTeamsPage    from './pages/CompareTeamsPage.jsx';
 
 // Layout
