@@ -103,7 +103,7 @@ export default function App() {
           } />
           <Route path="/admin/discover" element={
             <ProtectedRoute adminOnly>
-              <DiscoverMatchesPage />
+              <SeriesImportPage />
             </ProtectedRoute>
           } />
           <Route path="/match/:matchId/compare" element={
