@@ -354,6 +354,71 @@ function recomputeTeamPoints(matchId) {
   });
 
   recomputeAll();
+
+  // Snapshot current rankings for trajectory chart
+  try {
+    const db2 = getDb();
+    const teams = db2.prepare(
+      'SELECT ut.id, ut.total_fantasy_points FROM user_teams ut WHERE ut.match_id = ? ORDER BY ut.total_fantasy_points DESC'
+    ).all(matchId);
+
+    // Get current over from match_info ball count (stored in match)
+    const match = db2.prepare('SELECT last_ball_count FROM matches WHERE id = ?').get(matchId);
+    const balls = match?.last_ball_count || 0;
+    const over  = Math.round((balls / 6) * 10) / 10;
+
+    const insertSnap = db2.prepare(
+      'INSERT INTO rank_snapshots (match_id, user_team_id, over, total_pts, rank) VALUES (?,?,?,?,?)'
+    );
+    const snapAll = db2.transaction(() => {
+      teams.forEach((t, i) => insertSnap.run(matchId, t.id, over, t.total_fantasy_points, i + 1));
+    });
+    snapAll();
+
+    // 💉 Injection detection — compare with previous snapshot
+    try {
+      const prevSnaps = db2.prepare(`
+        SELECT rs.user_team_id, rs.rank, u.name, u.id as user_id
+        FROM rank_snapshots rs
+        JOIN user_teams ut ON ut.id = rs.user_team_id
+        JOIN users u ON u.id = ut.user_id
+        WHERE rs.match_id = ?
+        AND rs.id NOT IN (SELECT id FROM rank_snapshots WHERE match_id = ? ORDER BY id DESC LIMIT ?)
+        ORDER BY rs.id DESC
+        LIMIT ?
+      `).all(matchId, matchId, teams.length, teams.length);
+
+      // Build previous rank map
+      const prevRankMap = {};
+      for (const p of prevSnaps) prevRankMap[p.user_team_id] = { rank: p.rank, name: p.name, user_id: p.user_id };
+
+      // Detect injections — someone moved down
+      teams.forEach((t, i) => {
+        const newRank = i + 1;
+        const prev = prevRankMap[t.id];
+        if (prev && newRank > prev.rank) {
+          // This user got injected! (moved down)
+          console.log(`[injection] 💉 ${prev.name} dropped from #${prev.rank} to #${newRank}`);
+          // Emit to socket for push notification
+          try {
+            const { getIo } = require('../server');
+            const io = getIo();
+            if (io) {
+              io.to(`match:${matchId}`).emit('injection', {
+                matchId,
+                userId: prev.user_id,
+                userName: prev.name,
+                fromRank: prev.rank,
+                toRank: newRank,
+              });
+            }
+          } catch {}
+        }
+      });
+    } catch {}
+  } catch (e) {
+    // Non-critical — don't fail recompute if snapshot fails
+  }
 }
 
 // ── Sync Playing XI from match_xi endpoint ───────────────────────────────────

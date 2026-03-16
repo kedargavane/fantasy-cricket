@@ -79,6 +79,8 @@ function startCronJobs(io) {
 
           if (result.success) {
             matchBallCount.set(match.id, currentBalls);
+            // Save ball count for over tracking in snapshots
+            db.prepare('UPDATE matches SET last_ball_count = ? WHERE id = ?').run(currentBalls, match.id);
             io.to(`match:${match.id}`).emit('statsUpdate', {
               matchId: match.id, playersUpdated: result.playersUpdated,
               timestamp: new Date().toISOString(),

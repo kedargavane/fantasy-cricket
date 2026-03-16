@@ -24,9 +24,11 @@ function initDb() {
   const dir = path.dirname(DB_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
+  const isNew = !fs.existsSync(DB_PATH);
   db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+  console.log(`[db] Using database at: ${DB_PATH} (${isNew ? 'NEW' : 'EXISTING'})`);
 
   createTables(db);
   runMigrations(db);
@@ -226,6 +228,21 @@ function createTables(db) {
     CREATE INDEX IF NOT EXISTS idx_prize_dist_pool ON prize_distributions(match_prize_pool_id);
     CREATE INDEX IF NOT EXISTS idx_prize_dist_team ON prize_distributions(user_team_id);
 
+    -- ── RANK SNAPSHOTS ────────────────────────────────────────────────────
+    -- Stores rank snapshots every sync cycle for trajectory chart
+    CREATE TABLE IF NOT EXISTS rank_snapshots (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      match_id     INTEGER NOT NULL REFERENCES matches(id),
+      user_team_id INTEGER NOT NULL REFERENCES user_teams(id),
+      over         REAL    NOT NULL DEFAULT 0,
+      total_pts    INTEGER NOT NULL DEFAULT 0,
+      rank         INTEGER NOT NULL DEFAULT 0,
+      captured_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rank_snap_match ON rank_snapshots(match_id);
+    CREATE INDEX IF NOT EXISTS idx_rank_snap_team  ON rank_snapshots(match_id, user_team_id);
+
     -- ── SEASON LEADERBOARD ─────────────────────────────────────────────────
     CREATE TABLE IF NOT EXISTS season_leaderboard (
       id                   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -279,6 +296,26 @@ module.exports = { initDb, getDb, closeDb, runMigrations };
 
 // Run after createTables — safe migrations for schema additions
 function runMigrations(db) {
+  // Migration: add last_ball_count to matches if missing
+  try {
+    db.exec('ALTER TABLE matches ADD COLUMN last_ball_count INTEGER NOT NULL DEFAULT 0');
+  } catch {}
+
+  // Migration: add rank_snapshots table if missing (for existing DBs)
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS rank_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      match_id INTEGER NOT NULL REFERENCES matches(id),
+      user_team_id INTEGER NOT NULL REFERENCES user_teams(id),
+      over REAL NOT NULL DEFAULT 0,
+      total_pts INTEGER NOT NULL DEFAULT 0,
+      rank INTEGER NOT NULL DEFAULT 0,
+      captured_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_rank_snap_match ON rank_snapshots(match_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_rank_snap_team ON rank_snapshots(match_id, user_team_id)');
+  } catch {}
+
   // Add series_ids to seasons if missing (for existing DBs)
   try {
     db.prepare("SELECT series_ids FROM seasons LIMIT 1").get();

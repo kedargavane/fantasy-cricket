@@ -898,3 +898,47 @@ router.post('/matches/:id/sync-xi', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
+// ── POST /api/admin/matches/manual ───────────────────────────────────────────
+// Manually add a match without CricAPI (for LLC, local leagues etc.)
+router.post('/matches/manual', async (req, res) => {
+  const db = getDb();
+  const { seasonId, teamA, teamB, venue, matchType, startTime, entryUnits, externalMatchId } = req.body;
+
+  if (!seasonId || !teamA || !teamB || !startTime) {
+    return res.status(400).json({ error: 'seasonId, teamA, teamB, startTime required' });
+  }
+
+  const season = db.prepare('SELECT id FROM seasons WHERE id = ?').get(seasonId);
+  if (!season) return res.status(404).json({ error: 'Season not found' });
+
+  const matchId = upsertMatch(seasonId, {
+    externalMatchId: externalMatchId || `manual-${Date.now()}`,
+    teamA, teamB,
+    venue: venue || '',
+    matchType: matchType || 't20',
+    status: 'upcoming',
+    startTime,
+  });
+
+  if (entryUnits && entryUnits !== 300) {
+    db.prepare('UPDATE match_config SET entry_units = ? WHERE match_id = ?').run(entryUnits, matchId);
+  }
+
+  // Try to sync squad if externalMatchId provided
+  let squadCount = 0;
+  if (externalMatchId) {
+    try {
+      const cricapi = require('../api/cricapi');
+      const players = await cricapi.fetchMatchSquad(externalMatchId);
+      if (players.length > 0) {
+        const { upsertSquad } = require('../api/syncService');
+        upsertSquad(matchId, players);
+        squadCount = players.length;
+      }
+    } catch {}
+  }
+
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  return res.status(201).json({ message: 'Match added', match, squadCount });
+});

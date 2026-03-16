@@ -72,4 +72,5 @@ function start() {
 
 start();
 
-module.exports = { app, io }; // exported for testing
+function getIo() { return io; }
+module.exports = { app, io, getIo };

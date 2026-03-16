@@ -145,6 +145,40 @@ export default function MatchResultPage() {
           </div>
         </section>
 
+        {/* 🪣 Basement */}
+        {(() => {
+          const basementCutoff = Math.ceil(rankings.length / 2);
+          const basement = rankings.slice(basementCutoff);
+          if (basement.length === 0) return null;
+          return (
+            <section className="result-section fade-up">
+              <h3 className="section-title" style={{display:'flex',alignItems:'center',gap:6}}>
+                🪣 Basement
+              </h3>
+              <div className="card" style={{background:'rgba(248,113,113,0.05)',border:'1px solid rgba(248,113,113,0.15)'}}>
+                <p style={{fontSize:'0.75rem',color:'#f87171',marginBottom:8}}>
+                  Bottom {basement.length} player{basement.length!==1?'s':''} this match
+                </p>
+                <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                  {basement.map((e,i) => (
+                    <div key={e.user_id} style={{
+                      display:'flex',alignItems:'center',gap:6,
+                      background:'var(--bg-elevated)',border:'1px solid var(--border)',
+                      borderRadius:8,padding:'6px 10px',
+                    }}>
+                      <span style={{fontSize:'0.8rem'}}>🪣</span>
+                      <div>
+                        <div style={{fontSize:'0.8rem',fontWeight:500}}>{e.name}</div>
+                        <div style={{fontSize:'0.68rem',color:'var(--text-muted)'}}>{e.total_fantasy_points}pts · #{basementCutoff+i+1}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          );
+        })()}
+
         {/* Top performers */}
         {topPerformers?.length > 0 && (
           <section className="result-section fade-up">

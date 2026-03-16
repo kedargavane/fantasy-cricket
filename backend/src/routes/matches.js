@@ -191,4 +191,29 @@ router.get('/:id/leaderboard', requireAuth, (req, res) => {
   return res.json({ matchId, match, leaderboard: result });
 });
 
+// ── GET /api/matches/:id/rank-snapshots ──────────────────────────────────────
+router.get('/:id/rank-snapshots', requireAuth, (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+
+  const snapshots = db.prepare(`
+    SELECT rs.over, rs.total_pts, rs.rank,
+           u.name as user_name, u.id as user_id
+    FROM rank_snapshots rs
+    JOIN user_teams ut ON ut.id = rs.user_team_id
+    JOIN users u ON u.id = ut.user_id
+    WHERE rs.match_id = ?
+    ORDER BY rs.over ASC, rs.rank ASC
+  `).all(matchId);
+
+  // Group by user for chart series
+  const series = {};
+  for (const s of snapshots) {
+    if (!series[s.user_id]) series[s.user_id] = { name: s.user_name, data: [] };
+    series[s.user_id].data.push({ over: s.over, rank: s.rank, pts: s.total_pts });
+  }
+
+  return res.json({ matchId, series: Object.values(series) });
+});
+
 module.exports = router;

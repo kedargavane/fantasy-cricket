@@ -20,9 +20,12 @@ export default function LiveScorePage() {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [tab, setTab]           = useState(0); // will update after match loads
   const [viewTeam, setViewTeam] = useState(null);
+  const [snapshots, setSnapshots] = useState([]);
   const [loadingTeam, setLoadingTeam] = useState(false);
   const [compareA, setCompareA] = useState(0);
   const [compareB, setCompareB] = useState(0);
+
+  const [injection, setInjection] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -50,6 +53,10 @@ export default function LiveScorePage() {
       if (m?.status === 'completed') setTab(1); // default to Match Score for completed
       setScores(sRes.data.scores || []);
       setBoard(lRes.data.leaderboard || []);
+      try {
+        const snRes = await api.get(`/matches/${matchId}/rank-snapshots`);
+        setSnapshots(snRes.data.series || []);
+      } catch {}
       setLastUpdate(new Date());
       try {
         const tRes = await api.get(`/teams/match/${matchId}`);
@@ -64,6 +71,10 @@ export default function LiveScorePage() {
       const socket = io(SOCKET_URL, { transports: ['websocket'] });
       socketRef.current = socket;
       socket.emit('joinMatch', matchId);
+      socket.on('injection', (data) => {
+        setInjection(data);
+        setTimeout(() => setInjection(null), 5000);
+      });
       socket.on('statsUpdate', async () => {
         try {
           const [sRes, lRes] = await Promise.all([
@@ -150,6 +161,19 @@ export default function LiveScorePage() {
 
   return (
     <div className="ls-page">
+      {/* 💉 Injection toast */}
+      {injection && (
+        <div style={{position:'fixed',top:12,left:'50%',transform:'translateX(-50%)',zIndex:100,
+          background:'#1e1e2e',border:'1px solid rgba(248,113,113,0.4)',borderRadius:12,
+          padding:'10px 16px',display:'flex',alignItems:'center',gap:8,
+          boxShadow:'0 4px 20px rgba(0,0,0,0.4)',maxWidth:300,width:'90%'}}>
+          <span style={{fontSize:'1.2rem'}}>💉</span>
+          <div>
+            <div style={{fontSize:'0.8rem',fontWeight:600,color:'#f87171'}}>{injection.userName} got injected!</div>
+            <div style={{fontSize:'0.7rem',color:'var(--text-muted)'}}>Dropped from #{injection.fromRank} → #{injection.toRank}</div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="ls-header">
@@ -190,6 +214,9 @@ export default function LiveScorePage() {
               ))}
             </div>
           )}
+          {/* Rank trajectory chart */}
+          {snapshots.length > 0 && <RankChart series={snapshots} />}
+
           {/* Prize pool card */}
           {leaderboard.length >= 2 && (
             <div className="ls-prize-card">
@@ -324,6 +351,56 @@ export default function LiveScorePage() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+function RankChart({ series }) {
+  const colors = ['#00e5ff','#a78bfa','#fb923c','#4ade80','#f472b6','#facc15','#60a5fa','#34d399','#f87171'];
+  const allOvers = [...new Set(series.flatMap(s => s.data.map(d => d.over)))].sort((a,b)=>a-b);
+  const maxRank = Math.max(...series.flatMap(s => s.data.map(d => d.rank)));
+  const W = 340, H = 120, PL = 28, PR = 8, PT = 8, PB = 20;
+  const cW = W - PL - PR, cH = H - PT - PB;
+  const x = o => PL + (allOvers.length < 2 ? cW/2 : (allOvers.indexOf(o) / (allOvers.length-1)) * cW);
+  const y = r => PT + ((r-1) / Math.max(maxRank-1,1)) * cH;
+
+  return (
+    <div style={{background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 12px',marginBottom:12}}>
+      <div style={{fontSize:'0.65rem',textTransform:'uppercase',letterSpacing:'0.05em',color:'var(--text-muted)',marginBottom:6}}>Rank during match</div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',overflow:'visible'}}>
+        {/* Y axis labels */}
+        {Array.from({length:maxRank},(_,i)=>i+1).map(r=>(
+          <text key={r} x={PL-4} y={y(r)+4} textAnchor="end" fontSize="9" fill="var(--text-muted)">#{r}</text>
+        ))}
+        {/* Grid lines */}
+        {Array.from({length:maxRank},(_,i)=>i+1).map(r=>(
+          <line key={r} x1={PL} y1={y(r)} x2={W-PR} y2={y(r)} stroke="var(--border)" strokeWidth="0.5"/>
+        ))}
+        {/* Lines per user */}
+        {series.map((s,si) => {
+          const pts = s.data.map(d => `${x(d.over)},${y(d.rank)}`).join(' ');
+          return (
+            <g key={s.name}>
+              <polyline points={pts} fill="none" stroke={colors[si%colors.length]} strokeWidth="2" strokeLinejoin="round"/>
+              {s.data.map((d,di) => (
+                <circle key={di} cx={x(d.over)} cy={y(d.rank)} r="2.5" fill={colors[si%colors.length]}/>
+              ))}
+            </g>
+          );
+        })}
+        {/* X axis labels - show every 5 overs */}
+        {allOvers.filter(o => o % 5 === 0).map(o => (
+          <text key={o} x={x(o)} y={H} textAnchor="middle" fontSize="9" fill="var(--text-muted)">{o}ov</text>
+        ))}
+      </svg>
+      <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:6}}>
+        {series.map((s,si) => (
+          <div key={s.name} style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.65rem',color:'var(--text-muted)'}}>
+            <div style={{width:8,height:8,borderRadius:'50%',background:colors[si%colors.length],flexShrink:0}}/>
+            {s.name}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
