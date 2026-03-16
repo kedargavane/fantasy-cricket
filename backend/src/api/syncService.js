@@ -288,6 +288,16 @@ function recomputeTeamPoints(matchId) {
     WHERE pms.match_id = ? AND pms.player_id = ?
   `);
 
+  // Fallback: find stats by player name when IDs don't match
+  // (happens when match_squad and match_scorecard return different player IDs)
+  const getPlayerStatsByName = db.prepare(`
+    SELECT pms.* FROM player_match_stats pms
+    JOIN players p ON p.id = pms.player_id
+    JOIN players p2 ON LOWER(p2.name) = LOWER(p.name) AND p2.id = ?
+    WHERE pms.match_id = ?
+    LIMIT 1
+  `);
+
   // Fetch ALL players for a team (main + backup) so we can resolve swaps
   const getAllTeamPlayers = db.prepare(`
     SELECT utp.player_id, utp.is_backup, utp.backup_order
@@ -341,7 +351,9 @@ function recomputeTeamPoints(matchId) {
       let totalPoints = 0;
 
       for (const player_id of activePlayers) {
-        const stats = getPlayerStats.get(matchId, player_id);
+        let stats = getPlayerStats.get(matchId, player_id);
+        // Fallback: match by player name if ID doesn't find stats
+        if (!stats) stats = getPlayerStatsByName.get(player_id, matchId);
         if (!stats) continue;
 
         const role =
