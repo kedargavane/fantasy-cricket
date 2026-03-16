@@ -511,7 +511,7 @@ router.get('/dashboard', (req, res) => {
 
   const season = seasonId
     ? db.prepare('SELECT * FROM seasons WHERE id = ?').get(seasonId)
-    : db.prepare("SELECT * FROM seasons WHERE status = 'active' ORDER BY created_at DESC LIMIT 1").get();
+    : db.prepare('SELECT * FROM seasons ORDER BY id DESC LIMIT 1').get();
 
   if (!season) return res.json({ season: null });
 

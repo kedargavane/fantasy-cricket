@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../../utils/api.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import Spinner from '../../components/common/Spinner.jsx';
 import './AdminPages.css';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const { seasons: allSeasons, activeSeason, switchSeason } = useAuth();
   const [data, setData]         = useState(null);
   const [loading, setLoading]   = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -13,11 +15,12 @@ export default function AdminDashboard() {
   const [syncMsg, setSyncMsg]   = useState('');
   const [syncing, setSyncing]   = useState(false);
 
-  useEffect(() => { loadDashboard(); }, []);
+  useEffect(() => { loadDashboard(); }, [activeSeason?.id]);
 
   async function loadDashboard() {
     try {
-      const res = await api.get('/admin/dashboard');
+      const sid = activeSeason?.id || '';
+      const res = await api.get(`/admin/dashboard${sid ? '?seasonId='+sid : ''}`);
       setData(res.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -47,7 +50,18 @@ export default function AdminDashboard() {
         <header className="admin-header fade-up">
           <div>
             <h1 className="admin-title">Admin</h1>
-            {season && <p className="text-secondary text-sm">{season.name} · {season.invite_code}</p>}
+            {allSeasons.length > 1 ? (
+            <select
+              className="input input-sm"
+              style={{fontSize:'0.75rem',padding:'3px 8px',marginTop:4}}
+              value={activeSeason?.id || ''}
+              onChange={e => { const s = allSeasons.find(x => x.id === parseInt(e.target.value)); if(s) switchSeason(s); }}
+            >
+              {allSeasons.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          ) : (
+            season && <p className="text-secondary text-sm">{season.name} · {season.invite_code}</p>
+          )}
           </div>
           <div className="flex gap-2">
             <Link to="/admin/discover" className="btn btn-secondary btn-sm">🔍 Discover</Link>
