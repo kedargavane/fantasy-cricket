@@ -131,13 +131,36 @@ function upsertStats(matchId, playerStats) {
       updated_at     = datetime('now')
   `);
 
+  const upsertPlayer = db.prepare(`
+    INSERT INTO players (name, team, role, external_player_id)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(external_player_id) DO UPDATE SET
+      name = excluded.name, team = excluded.team
+  `);
+
+  const addToSquad = db.prepare(`
+    INSERT INTO match_squads (match_id, player_id, is_playing_xi)
+    VALUES (?, ?, 1)
+    ON CONFLICT(match_id, player_id) DO UPDATE SET is_playing_xi = 1
+  `);
+
   const doUpsert = db.transaction((playerStats) => {
     for (const stat of playerStats) {
-      const player = getPlayer.get(stat.externalPlayerId);
-      if (!player) continue;
+      // Try to find player by external ID first
+      let player = getPlayer.get(stat.externalPlayerId);
+
+      // If not found — upsert by external ID from scorecard and add to squad
+      if (!player) {
+        upsertPlayer.run(stat.name, stat.team, stat.role || 'batsman', stat.externalPlayerId);
+        player = getPlayer.get(stat.externalPlayerId);
+        if (!player) continue;
+        // Auto-add to match squad as playing XI since they appeared in scorecard
+        addToSquad.run(matchId, player.id);
+        console.log(`[upsertStats] Auto-added ${stat.name} (${stat.externalPlayerId}) to match ${matchId} squad`);
+      }
 
       const squadEntry = getSquadEntry.get(matchId, player.id);
-      const isPlayingXi = squadEntry ? squadEntry.is_playing_xi === 1 : false;
+      const isPlayingXi = squadEntry ? squadEntry.is_playing_xi === 1 : true; // scorecard players are playing
 
       // Compute fantasy points (role is 'normal' here — multipliers applied at team scoring)
       const { total: fantasyPoints } = calculateFantasyPoints(
