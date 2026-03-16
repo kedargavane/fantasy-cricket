@@ -172,8 +172,12 @@ function upsertStats(matchId, playerStats) {
         console.log(`[upsertStats] Auto-added new player ${stat.name} to match ${matchId} squad`);
       }
 
-      const squadEntry = getSquadEntry.get(matchId, player.id);
-      const isPlayingXi = squadEntry ? squadEntry.is_playing_xi === 1 : true; // scorecard players are playing
+      // Mark as playing XI since they appeared in scorecard
+      addToSquad.run(matchId, player.id);
+
+      // All players appearing in scorecard are playing XI — don't read back from DB
+      // (DB write via addToSquad may not be visible in same transaction)
+      const isPlayingXi = true;
 
       // Compute fantasy points (role is 'normal' here — multipliers applied at team scoring)
       const { total: fantasyPoints } = calculateFantasyPoints(
