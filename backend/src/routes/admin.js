@@ -963,3 +963,38 @@ router.post('/fix-match-times', (req, res) => {
 
   return res.json({ message: `Fixed ${matches.length} match times`, matches: matches.length });
 });
+
+// ── POST /api/admin/sync-all-squads ──────────────────────────────────────────
+// Immediately sync squads for all upcoming matches with 0 players
+router.post('/sync-all-squads', async (req, res) => {
+  const db = getDb();
+  const matches = db.prepare(`
+    SELECT m.id, m.external_match_id, m.team_a, m.team_b
+    FROM matches m
+    WHERE m.status = 'upcoming'
+    AND m.external_match_id IS NOT NULL
+    AND m.external_match_id NOT LIKE 'manual-%'
+    AND (SELECT COUNT(*) FROM match_squads ms WHERE ms.match_id = m.id) = 0
+  `).all();
+
+  if (matches.length === 0) return res.json({ message: 'All squads already loaded', synced: 0 });
+
+  const cricapi = require('../api/cricapi');
+  const results = [];
+
+  for (const match of matches) {
+    try {
+      const players = await cricapi.fetchMatchSquad(match.external_match_id);
+      if (players.length > 0) {
+        upsertSquad(match.id, players);
+        results.push({ matchId: match.id, name: `${match.team_a} vs ${match.team_b}`, players: players.length });
+      } else {
+        results.push({ matchId: match.id, name: `${match.team_a} vs ${match.team_b}`, players: 0, note: 'No squad available yet' });
+      }
+    } catch (err) {
+      results.push({ matchId: match.id, name: `${match.team_a} vs ${match.team_b}`, error: err.message });
+    }
+  }
+
+  return res.json({ message: `Processed ${matches.length} matches`, results });
+});

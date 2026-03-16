@@ -26,6 +26,17 @@ export default function AdminDashboard() {
     finally { setLoading(false); }
   }
 
+  async function syncAllSquads() {
+    setSyncMsg('Syncing squads...');
+    try {
+      const res = await api.post('/admin/sync-all-squads');
+      const synced = res.data.results?.filter(r => r.players > 0).length || 0;
+      setSyncMsg(synced > 0 ? `Synced squads for ${synced} matches` : 'No new squads available yet');
+    } catch (e) {
+      setSyncMsg('Squad sync failed');
+    }
+  }
+
   async function triggerSync() {
     if (!data?.season) return;
     setSyncing(true);
