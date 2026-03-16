@@ -215,7 +215,39 @@ function startCronJobs(io) {
     }
   });
 
-  // ── 5. Auto-schedule — every hour ────────────────────────────────────────
+  // ── 5. Auto squad sync — every hour ─────────────────────────────────────
+  // Syncs squads for upcoming matches that have 0 players loaded
+  cron.schedule('0 * * * *', async () => {
+    const db = getDb();
+    const matchesNeedingSquad = db.prepare(`
+      SELECT m.id, m.external_match_id, m.team_a, m.team_b
+      FROM matches m
+      WHERE m.status = 'upcoming'
+      AND m.external_match_id IS NOT NULL
+      AND m.external_match_id NOT LIKE 'manual-%'
+      AND (SELECT COUNT(*) FROM match_squads ms WHERE ms.match_id = m.id) = 0
+    `).all();
+
+    if (matchesNeedingSquad.length === 0) return;
+    console.log(`[squadSync] ${matchesNeedingSquad.length} matches need squads`);
+
+    const { fetchMatchSquad } = require('../api/cricapi');
+    const { upsertSquad }     = require('../api/syncService');
+
+    for (const match of matchesNeedingSquad) {
+      try {
+        const players = await fetchMatchSquad(match.external_match_id);
+        if (players.length > 0) {
+          upsertSquad(match.id, players);
+          console.log(`[squadSync] Match ${match.id}: ${players.length} players synced`);
+        }
+      } catch (err) {
+        console.error(`[squadSync] Match ${match.id} error:`, err.message);
+      }
+    }
+  });
+
+  // ── 6. Auto-schedule — every hour ────────────────────────────────────────
   const autoScheduler = cron.schedule('0 * * * *', async () => {
     console.log('[autoScheduler] Running...');
     try { await runAutoSchedule(); }
