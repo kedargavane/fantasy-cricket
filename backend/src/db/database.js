@@ -228,6 +228,21 @@ function createTables(db) {
     CREATE INDEX IF NOT EXISTS idx_prize_dist_pool ON prize_distributions(match_prize_pool_id);
     CREATE INDEX IF NOT EXISTS idx_prize_dist_team ON prize_distributions(user_team_id);
 
+    -- ── FEEDBACK ───────────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS feedback (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL REFERENCES users(id),
+      type        TEXT    NOT NULL DEFAULT 'feature', -- bug | feature | ux | general
+      title       TEXT    NOT NULL,
+      details     TEXT    NOT NULL DEFAULT '',
+      status      TEXT    NOT NULL DEFAULT 'open',    -- open | in_progress | resolved
+      resolution  TEXT    NOT NULL DEFAULT '',
+      created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+      updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id);
+    CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);
+
     -- ── RANK SNAPSHOTS ────────────────────────────────────────────────────
     -- Stores rank snapshots every sync cycle for trajectory chart
     CREATE TABLE IF NOT EXISTS rank_snapshots (
@@ -296,6 +311,41 @@ module.exports = { initDb, getDb, closeDb, runMigrations };
 
 // Run after createTables — safe migrations for schema additions
 function runMigrations(db) {
+  // Migration: add feedback table
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      type TEXT NOT NULL DEFAULT 'feature',
+      title TEXT NOT NULL,
+      details TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open',
+      resolution TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status)');
+    // Seed initial feedback items if table is empty
+    const count = db.prepare('SELECT COUNT(*) as c FROM feedback').get().c;
+    if (count === 0) {
+      db.prepare(`INSERT INTO feedback (user_id, type, title, details, status, resolution) VALUES
+        (1, 'bug',     'Match scores showing incorrect values',
+         'Scores on the scoreboard did not match actual match scores during BAN vs PAK ODI.',
+         'resolved',
+         'Fixed in v5.5 — CricAPI innings team field corrected (inningsTeam → inning), timezone offset applied for IST display.'),
+        (1, 'feature', 'Basement classification for bottom ranked players',
+         'Would be fun to have a special label for players finishing in the bottom half.',
+         'resolved',
+         'Built in v5.1 — bottom 50% shown as Basement on result page after match ends.'),
+        (1, 'bug',     'Backup player swap logic not working correctly',
+         'Backup players were not replacing non-playing mains and their points were not counted.',
+         'resolved',
+         'Fixed in v4.7 — recomputeTeamPoints now correctly swaps non-playing mains with available backups, C/VC multiplier transfers to swapped player.')`
+      ).run();
+    }
+  } catch {}
+
   // Migration: add last_ball_count to matches if missing
   try {
     db.exec('ALTER TABLE matches ADD COLUMN last_ball_count INTEGER NOT NULL DEFAULT 0');

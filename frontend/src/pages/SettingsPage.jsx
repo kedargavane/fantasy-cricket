@@ -166,6 +166,9 @@ export default function SettingsPage() {
             <button className="btn btn-secondary btn-full" onClick={() => navigate('/faq')}>
               How it works — scoring, backups & rules
             </button>
+            <button className="btn btn-secondary btn-full mt-2" onClick={() => navigate('/feedback')}>
+              Feedback & feature requests
+            </button>
           </div>
         </section>
 

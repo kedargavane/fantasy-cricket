@@ -15,6 +15,7 @@ import AdminMatchPage   from './pages/admin/AdminMatchPage.jsx';
 import AdminUsersPage      from './pages/admin/AdminUsersPage.jsx';
 import SeriesImportPage from './pages/admin/SeriesImportPage.jsx';
 import FAQPage from './pages/FAQPage.jsx';
+import FeedbackPage from './pages/FeedbackPage.jsx';
 import CompareTeamsPage    from './pages/CompareTeamsPage.jsx';
 
 // Layout
@@ -115,6 +116,7 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
           <Route path="/faq" element={<AppLayout><FAQPage /></AppLayout>} />
+          <Route path="/feedback" element={<AppLayout><FeedbackPage /></AppLayout>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

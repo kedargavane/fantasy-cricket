@@ -1,0 +1,46 @@
+.fb-page{min-height:100vh;background:var(--bg-base);padding-bottom:80px}
+.fb-header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20}
+.fb-back{font-size:1.5rem;background:none;border:none;color:var(--text-secondary);cursor:pointer;line-height:1;padding:0}
+.fb-title{font-size:0.875rem;font-weight:600}
+.fb-body{padding:14px;max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+
+.fb-card{background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.fb-card-title{font-size:0.875rem;font-weight:600;margin-bottom:12px}
+
+.fb-field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.fb-label{font-size:0.7rem;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted)}
+.fb-select,.fb-input{font-size:0.8rem;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-primary);width:100%}
+.fb-textarea{font-size:0.8rem;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-primary);width:100%;min-height:80px;resize:vertical;font-family:var(--font-sans)}
+.fb-submit{width:100%;padding:10px;border-radius:8px;background:var(--accent-primary);color:#000;font-weight:700;font-size:0.875rem;border:none;cursor:pointer;margin-top:4px;opacity:1}
+.fb-submit:disabled{opacity:0.5;cursor:default}
+.fb-msg{font-size:0.78rem;padding:8px 10px;border-radius:8px;margin-bottom:8px}
+.fb-msg-ok{background:rgba(74,222,128,0.1);color:var(--accent-green)}
+.fb-msg-err{background:rgba(248,113,113,0.1);color:#f87171}
+
+.fb-filters{display:flex;gap:6px;flex-wrap:wrap}
+.fb-filter-btn{font-size:0.72rem;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-muted);cursor:pointer}
+.fb-filter-btn.active{background:var(--accent-primary);color:#000;border-color:var(--accent-primary);font-weight:600}
+
+.fb-empty{text-align:center;color:var(--text-muted);font-size:0.875rem;padding:24px 0}
+
+.fb-item{background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.fb-item-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px}
+.fb-type{font-size:0.68rem;font-weight:500;padding:3px 8px;border-radius:6px;flex-shrink:0}
+.fb-type-bug{background:rgba(226,75,74,0.1);color:#E24B4A}
+.fb-type-feat{background:rgba(55,138,221,0.12);color:#378ADD}
+.fb-type-ux{background:rgba(127,119,221,0.12);color:#7F77DD}
+.fb-type-gen{background:var(--bg-elevated);color:var(--text-muted)}
+.fb-status{font-size:0.65rem;font-weight:600;padding:3px 8px;border-radius:6px;flex-shrink:0}
+.fb-status-open{background:var(--bg-elevated);color:var(--text-muted)}
+.fb-status-prog{background:rgba(186,117,23,0.12);color:#BA7517}
+.fb-status-done{background:rgba(29,158,117,0.12);color:#1D9E75}
+.fb-item-title{font-size:0.875rem;font-weight:600;margin-bottom:4px;color:var(--text-primary)}
+.fb-item-details{font-size:0.78rem;color:var(--text-secondary);margin-bottom:6px;line-height:1.5}
+.fb-item-meta{font-size:0.68rem;color:var(--text-muted)}
+.fb-resolution{font-size:0.75rem;color:var(--accent-green);margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border);line-height:1.5}
+
+.fb-admin-btn{font-size:0.7rem;color:var(--text-muted);background:none;border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer;margin-top:8px}
+.fb-admin-edit{margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border);display:flex;flex-direction:column;gap:6px}
+.fb-btn-save{padding:5px 14px;border-radius:6px;background:var(--accent-primary);color:#000;font-weight:600;font-size:0.75rem;border:none;cursor:pointer}
+.fb-btn-cancel{padding:5px 14px;border-radius:6px;background:var(--bg-elevated);color:var(--text-secondary);font-size:0.75rem;border:1px solid var(--border);cursor:pointer}
+.fb-btn-delete{padding:5px 14px;border-radius:6px;background:rgba(248,113,113,0.1);color:#f87171;font-size:0.75rem;border:1px solid rgba(248,113,113,0.2);cursor:pointer;margin-left:auto}
