@@ -5,7 +5,7 @@ import api, { SOCKET_URL } from '../utils/api.js';
 import Spinner from '../components/common/Spinner.jsx';
 import './LiveScorePage.css';
 
-const TABS = ['Leaderboard', 'Match Score', 'Compare', 'All Players'];
+const BASE_TABS = ['Leaderboard', 'Match Score', 'Compare', 'All Players'];
 
 export default function LiveScorePage() {
   const { matchId } = useParams();
@@ -21,9 +21,13 @@ export default function LiveScorePage() {
   const [tab, setTab]           = useState(0); // will update after match loads
   const [viewTeam, setViewTeam] = useState(null);
   const [snapshots, setSnapshots] = useState([]);
+  const [result, setResult]       = useState(null);
   const [loadingTeam, setLoadingTeam] = useState(false);
   const [compareA, setCompareA] = useState(0);
   const [compareB, setCompareB] = useState(0);
+  const TABS = match?.status === 'completed'
+    ? ['Result', ...BASE_TABS]
+    : BASE_TABS;
 
   const [injection, setInjection] = useState(null);
 
@@ -50,12 +54,20 @@ export default function LiveScorePage() {
       ]);
       const m = sRes.data.match;
       setMatch(m);
-      if (m?.status === 'completed') setTab(1); // default to Match Score for completed
+      if (m?.status === 'completed') setTab(0); // default to Result tab for completed
       setScores(sRes.data.scores || []);
       setBoard(lRes.data.leaderboard || []);
       try {
         const snRes = await api.get(`/matches/${matchId}/rank-snapshots`);
         setSnapshots(snRes.data.series || []);
+      } catch {}
+      // Fetch result for completed matches
+      try {
+        const m = sRes.data.match;
+        if (m?.status === 'completed') {
+          const rRes = await api.get(`/leaderboard/match/${matchId}/result`);
+          setResult(rRes.data);
+        }
       } catch {}
       setLastUpdate(new Date());
       try {
@@ -187,9 +199,7 @@ export default function LiveScorePage() {
           </span>
         </div>
         <div className="ls-header-actions">
-          {match?.status === 'completed' && (
-            <button className="ls-action-btn ls-result-btn" onClick={() => navigate(`/match/${matchId}/result`)}>Result</button>
-          )}
+
         </div>
       </div>
 
@@ -200,8 +210,13 @@ export default function LiveScorePage() {
         ))}
       </div>
 
-      {/* Tab 0: Leaderboard */}
-      {tab === 0 && (
+      {/* Tab 0: Result (completed only) */}
+      {tab === 0 && match?.status === 'completed' && result && (
+        <ResultTab result={result} currentUserId={null} />
+      )}
+
+      {/* Tab 0/1: Leaderboard */}
+      {((match?.status === 'completed' && tab === 1) || (match?.status !== 'completed' && tab === 0)) && (
         <div className="ls-content">
           {/* Match score summary */}
           {Object.keys(innings).length > 0 && (
@@ -259,8 +274,8 @@ export default function LiveScorePage() {
         </div>
       )}
 
-      {/* Tab 1: Match Score */}
-      {tab === 1 && (
+      {/* Tab 1/2: Match Score */}
+      {((match?.status === 'completed' && tab === 2) || (match?.status !== 'completed' && tab === 1)) && (
         <div className="ls-content">
           {Object.keys(innings).length === 0
             ? <div className="ls-empty">Scores not available yet</div>
@@ -314,8 +329,8 @@ export default function LiveScorePage() {
         </div>
       )}
 
-      {/* Tab 2: Compare */}
-      {tab === 2 && (
+      {/* Tab 2/3: Compare */}
+      {((match?.status === 'completed' && tab === 3) || (match?.status !== 'completed' && tab === 2)) && (
         <div className="ls-content">
           <div className="ls-compare-selectors">
             <select className="ls-compare-select" value={compareA} onChange={e => setCompareA(parseInt(e.target.value))}>
@@ -337,8 +352,8 @@ export default function LiveScorePage() {
         </div>
       )}
 
-      {/* Tab 3: All Players */}
-      {tab === 3 && (
+      {/* Tab 3/4: All Players */}
+      {((match?.status === 'completed' && tab === 4) || (match?.status !== 'completed' && tab === 3)) && (
         <div className="ls-content">
           {scores.length === 0
             ? <div className="ls-empty">No player scores yet</div>
@@ -351,6 +366,94 @@ export default function LiveScorePage() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+function ResultTab({ result }) {
+  const { rankings, prizePool, topPerformers } = result;
+  const top3 = rankings.slice(0, 3);
+  const basementCutoff = Math.ceil(rankings.length / 2);
+  const basement = rankings.slice(basementCutoff);
+  const entryFee = prizePool?.entry_units || 300;
+
+  return (
+    <div className="ls-content">
+      {/* Podium */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
+        {[top3[1], top3[0], top3[2]].filter(Boolean).map((e, vi) => {
+          const podPos = vi===0?2:vi===1?1:3;
+          const medal = podPos===1?'🥇':podPos===2?'🥈':'🥉';
+          const gross = e.gross_units||0;
+          const net = e.net_units ?? (gross - entryFee);
+          return (
+            <div key={e.user_id} style={{
+              background:'var(--bg-surface)',border:'1px solid var(--border)',
+              borderRadius:10,padding:'10px 8px',textAlign:'center',
+              ...(podPos===1?{borderColor:'rgba(186,117,23,0.4)',background:'rgba(186,117,23,0.05)'}:{})
+            }}>
+              <div style={{fontSize:'1.3rem'}}>{medal}</div>
+              <div style={{fontSize:'0.75rem',fontWeight:600,marginTop:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.name}</div>
+              <div style={{fontSize:'0.9rem',fontWeight:700,fontFamily:'var(--font-mono)',color:'var(--accent-primary)',marginTop:2}}>{e.total_fantasy_points}</div>
+              {gross > 0 && <div style={{fontSize:'0.68rem',color:'var(--accent-green)',marginTop:2}}>+{net}u</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Full rankings */}
+      <div style={{background:'var(--bg-surface)',border:'1px solid var(--border)',borderRadius:10,marginBottom:12,overflow:'hidden'}}>
+        {rankings.map((e, i) => {
+          const gross = e.gross_units||0;
+          const net = e.net_units ?? (gross - entryFee);
+          const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
+          return (
+            <div key={e.user_id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderBottom:i<rankings.length-1?'0.5px solid var(--border)':'none'}}>
+              <span style={{width:28,textAlign:'center',fontSize:'0.8rem',flexShrink:0}}>{medal}</span>
+              <span style={{flex:1,fontSize:'0.875rem',fontWeight:500}}>{e.name}</span>
+              <span style={{fontFamily:'var(--font-mono)',fontSize:'0.875rem',color:'var(--accent-primary)',flexShrink:0}}>{e.total_fantasy_points}</span>
+              <span style={{fontFamily:'var(--font-mono)',fontSize:'0.78rem',minWidth:52,textAlign:'right',color:net>=0?'var(--accent-green)':'#f87171',flexShrink:0}}>
+                {net>=0?'+':''}{net}u
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Basement */}
+      {basement.length > 0 && (
+        <div style={{background:'rgba(248,113,113,0.05)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:10,padding:'10px 14px',marginBottom:12}}>
+          <div style={{fontSize:'0.72rem',fontWeight:600,color:'#f87171',marginBottom:8}}>🪣 Basement</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+            {basement.map(e => (
+              <div key={e.user_id} style={{background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:8,padding:'4px 10px',fontSize:'0.78rem',fontWeight:500}}>
+                {e.name}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Top performers */}
+      {topPerformers?.length > 0 && (
+        <div style={{background:'var(--bg-surface)',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden'}}>
+          <div style={{padding:'8px 14px',borderBottom:'1px solid var(--border)',fontSize:'0.72rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',color:'var(--text-muted)'}}>Top performers</div>
+          {topPerformers.map((p, i) => (
+            <div key={p.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 14px',borderBottom:i<topPerformers.length-1?'0.5px solid var(--border)':'none'}}>
+              <span style={{fontSize:'0.72rem',color:'var(--text-muted)',width:16}}>#{i+1}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:'0.8rem',fontWeight:500}}>{p.name}</div>
+                <div style={{fontSize:'0.68rem',color:'var(--text-muted)'}}>{p.team}</div>
+              </div>
+              <div style={{display:'flex',gap:4,flexShrink:0}}>
+                {p.runs>0&&<span style={{fontSize:'0.68rem',background:'var(--bg-elevated)',padding:'2px 6px',borderRadius:4}}>{p.runs}r</span>}
+                {p.wickets>0&&<span style={{fontSize:'0.68rem',background:'var(--bg-elevated)',padding:'2px 6px',borderRadius:4}}>{p.wickets}w</span>}
+              </div>
+              <span style={{fontFamily:'var(--font-mono)',fontSize:'0.875rem',color:'var(--accent-primary)',flexShrink:0}}>{p.fantasy_points}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
