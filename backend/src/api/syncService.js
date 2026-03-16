@@ -149,14 +149,27 @@ function upsertStats(matchId, playerStats) {
       // Try to find player by external ID first
       let player = getPlayer.get(stat.externalPlayerId);
 
-      // If not found — upsert by external ID from scorecard and add to squad
+      // If not found by ID — try to find by name (squad/scorecard use different IDs)
+      if (!player) {
+        const byName = db.prepare(
+          "SELECT id FROM players WHERE LOWER(name) = LOWER(?)"
+        ).get(stat.name);
+        if (byName) {
+          // Update existing player's external ID to the scorecard ID so future lookups work
+          db.prepare('UPDATE players SET external_player_id = ? WHERE id = ?')
+            .run(stat.externalPlayerId, byName.id);
+          player = byName;
+          console.log(`[upsertStats] Matched ${stat.name} by name, updated external_player_id`);
+        }
+      }
+
+      // Still not found — create new player and add to squad
       if (!player) {
         upsertPlayer.run(stat.name, stat.team, stat.role || 'batsman', stat.externalPlayerId);
         player = getPlayer.get(stat.externalPlayerId);
         if (!player) continue;
-        // Auto-add to match squad as playing XI since they appeared in scorecard
         addToSquad.run(matchId, player.id);
-        console.log(`[upsertStats] Auto-added ${stat.name} (${stat.externalPlayerId}) to match ${matchId} squad`);
+        console.log(`[upsertStats] Auto-added new player ${stat.name} to match ${matchId} squad`);
       }
 
       const squadEntry = getSquadEntry.get(matchId, player.id);
@@ -288,15 +301,7 @@ function recomputeTeamPoints(matchId) {
     WHERE pms.match_id = ? AND pms.player_id = ?
   `);
 
-  // Fallback: find stats by player name when IDs don't match
-  // (happens when match_squad and match_scorecard return different player IDs)
-  const getPlayerStatsByName = db.prepare(`
-    SELECT pms.* FROM player_match_stats pms
-    JOIN players p ON p.id = pms.player_id
-    JOIN players p2 ON LOWER(p2.name) = LOWER(p.name) AND p2.id = ?
-    WHERE pms.match_id = ?
-    LIMIT 1
-  `);
+
 
   // Fetch ALL players for a team (main + backup) so we can resolve swaps
   const getAllTeamPlayers = db.prepare(`
@@ -351,9 +356,7 @@ function recomputeTeamPoints(matchId) {
       let totalPoints = 0;
 
       for (const player_id of activePlayers) {
-        let stats = getPlayerStats.get(matchId, player_id);
-        // Fallback: match by player name if ID doesn't find stats
-        if (!stats) stats = getPlayerStatsByName.get(player_id, matchId);
+        const stats = getPlayerStats.get(matchId, player_id);
         if (!stats) continue;
 
         const role =

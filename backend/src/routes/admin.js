@@ -331,6 +331,56 @@ router.post('/matches/:id/squad', (req, res) => {
   return res.json({ squad, playingXiCount });
 });
 
+// ── POST /api/admin/matches/:id/cleanup-squad ───────────────────────────────
+// Remove duplicate players created by scorecard auto-add, merge stats to original
+router.post('/matches/:id/cleanup-squad', (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.id, 10);
+
+  // Find players with duplicate names in this match's squad
+  const dupes = db.prepare(`
+    SELECT p.id, p.name, p.external_player_id,
+           (SELECT id FROM players p2 WHERE LOWER(p2.name) = LOWER(p.name) AND p2.id < p.id LIMIT 1) as original_id
+    FROM players p
+    JOIN match_squads ms ON ms.player_id = p.id AND ms.match_id = ?
+    WHERE EXISTS (
+      SELECT 1 FROM players p2 WHERE LOWER(p2.name) = LOWER(p.name) AND p2.id < p.id
+    )
+  `).all(matchId);
+
+  let merged = 0;
+  for (const dupe of dupes) {
+    if (!dupe.original_id) continue;
+    // Move stats from dupe to original
+    db.prepare(`
+      INSERT INTO player_match_stats (match_id, player_id, runs, balls_faced, fours, sixes,
+        dismissal_type, overs_bowled, wickets, runs_conceded, maidens, catches, stumpings,
+        run_outs, fantasy_points, updated_at)
+      SELECT match_id, ?, runs, balls_faced, fours, sixes, dismissal_type, overs_bowled,
+        wickets, runs_conceded, maidens, catches, stumpings, run_outs, fantasy_points, updated_at
+      FROM player_match_stats WHERE match_id = ? AND player_id = ?
+      ON CONFLICT(match_id, player_id) DO UPDATE SET
+        runs=excluded.runs, balls_faced=excluded.balls_faced, fours=excluded.fours,
+        sixes=excluded.sixes, dismissal_type=excluded.dismissal_type,
+        overs_bowled=excluded.overs_bowled, wickets=excluded.wickets,
+        runs_conceded=excluded.runs_conceded, maidens=excluded.maidens,
+        fantasy_points=excluded.fantasy_points, updated_at=excluded.updated_at
+    `).run(dupe.original_id, matchId, dupe.id);
+
+    // Remove dupe from squad and stats
+    db.prepare('DELETE FROM match_squads WHERE match_id = ? AND player_id = ?').run(matchId, dupe.id);
+    db.prepare('DELETE FROM player_match_stats WHERE match_id = ? AND player_id = ?').run(matchId, dupe.id);
+    merged++;
+    console.log(`[cleanup] Merged ${dupe.name} (id=${dupe.id}) → id=${dupe.original_id}`);
+  }
+
+  // Recompute after cleanup
+  const { recomputeTeamPoints } = require('../api/syncService');
+  recomputeTeamPoints(matchId);
+
+  return res.json({ message: `Merged ${merged} duplicate players`, merged });
+});
+
 // ── POST /api/admin/matches/:id/sync-live ────────────────────────────────────
 // Manually trigger a live scorecard sync for a match
 router.post('/matches/:id/sync-live', async (req, res) => {
