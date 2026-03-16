@@ -29,20 +29,10 @@ export default function HomePage() {
       ]);
       const allMatches = mRes.data.matches || [];
       setMatches(allMatches);
-      // Fetch live score for live match
+      // Use live_score stored on match record (updated every sync)
       const live = allMatches.find(m => m.status === 'live');
-      if (live) {
-        try {
-          const sRes = await api.get(`/matches/${live.id}/scores`);
-          const scores = sRes.data.scores || [];
-          const teams = {};
-          scores.forEach(p => {
-            if (!teams[p.team]) teams[p.team] = { runs:0, wkts:0 };
-            teams[p.team].runs += p.runs || 0;
-            if (p.dismissal_type && !['notout','dnb',''].includes(p.dismissal_type)) teams[p.team].wkts++;
-          });
-          setLiveScore(teams);
-        } catch {}
+      if (live?.live_score) {
+        setLiveScore({ raw: live.live_score });
       }
       setBoard((lRes.data.leaderboard || []).slice(0, 5));
     } catch (e) {

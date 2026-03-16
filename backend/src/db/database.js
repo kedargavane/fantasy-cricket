@@ -326,6 +326,9 @@ function runMigrations(db) {
     )`);
     db.exec('CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status)');
+    // Migration: add live_score column to matches
+    try { db.exec('ALTER TABLE matches ADD COLUMN live_score TEXT DEFAULT NULL'); } catch {}
+
     // Migration: update Season 2 invite code to match Season 1 (GYARAH1)
     try {
       const s2 = db.prepare("SELECT id, invite_code FROM seasons WHERE id = 2").get();

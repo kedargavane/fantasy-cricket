@@ -540,11 +540,14 @@ async function syncLiveMatch(matchId, externalMatchId) {
     // Recompute all team points
     recomputeTeamPoints(matchId);
 
-    // Update match status and last_synced
+    // Update match status, last_synced and live score
     const newStatus = matchInfo.matchEnded ? 'completed' : 'live';
+    const scoreStr = (matchInfo.score || []).map(s => 
+      `${s.inning?.replace(/\s+Inning\s+\d+/i,'').trim() || ''} ${s.r}/${s.w} (${s.o})`
+    ).join(' | ');
     db.prepare(`
-      UPDATE matches SET status = ?, last_synced = datetime('now') WHERE id = ?
-    `).run(newStatus, matchId);
+      UPDATE matches SET status = ?, last_synced = datetime('now'), live_score = ? WHERE id = ?
+    `).run(newStatus, scoreStr, matchId);
 
     console.log(`[syncLiveMatch] matchId=${matchId}: ${playerStats.length} players synced, status=${newStatus}`);
     return { success: true, status: newStatus, playersUpdated: playerStats.length };
