@@ -1,0 +1,56 @@
+.faq-page { min-height:100vh; background:var(--bg-base); padding-bottom:80px; }
+.faq-header { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--bg-surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:20; }
+.faq-back  { font-size:1.5rem; background:none; border:none; color:var(--text-secondary); cursor:pointer; line-height:1; padding:0; }
+.faq-title { font-size:0.875rem; font-weight:600; }
+.faq-body  { padding:16px 14px; max-width:600px; margin:0 auto; }
+
+.faq-section { margin-bottom:24px; }
+.faq-section-title { font-size:0.9rem; font-weight:600; margin-bottom:10px; }
+.faq-card { background:var(--bg-surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:10px; }
+.faq-text { font-size:0.8125rem; color:var(--text-secondary); line-height:1.6; margin-bottom:12px; }
+.faq-note { font-size:0.75rem; color:var(--text-muted); margin-top:12px; line-height:1.5; }
+
+.faq-mult-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.faq-mult-card { background:var(--bg-elevated); border-radius:8px; padding:10px; text-align:center; }
+.faq-mult-num   { display:block; font-size:1.5rem; font-weight:600; font-family:var(--font-mono); }
+.faq-mult-label { display:block; font-size:0.72rem; color:var(--text-muted); margin-top:2px; }
+.faq-green { color:var(--accent-green); }
+.faq-blue  { color:var(--accent-primary); }
+.faq-red   { color:#f87171; }
+
+.faq-table-label { font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px; }
+.faq-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+.faq-table th { text-align:left; padding:6px 8px; background:var(--bg-elevated); color:var(--text-muted); font-weight:500; border-bottom:1px solid var(--border); }
+.faq-table td { padding:6px 8px; border-bottom:0.5px solid var(--border); color:var(--text-primary); }
+.faq-table tr:last-child td { border-bottom:none; }
+.faq-table .pos { color:var(--accent-green); font-weight:600; text-align:right; font-family:var(--font-mono); }
+.faq-table .neg { color:#f87171; font-weight:600; text-align:right; font-family:var(--font-mono); }
+
+.faq-update-rows { display:flex; flex-direction:column; gap:8px; margin:10px 0; }
+.faq-update-row  { display:flex; align-items:center; gap:10px; }
+.faq-update-label { font-size:0.78rem; font-weight:500; width:90px; flex-shrink:0; }
+.faq-bar-track { flex:1; height:6px; background:var(--bg-elevated); border-radius:3px; overflow:hidden; }
+.faq-bar-fill  { height:100%; border-radius:3px; }
+.faq-update-val { font-size:0.72rem; color:var(--text-muted); width:70px; text-align:right; flex-shrink:0; }
+
+.faq-swap-flow  { display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:center; margin:12px 0; }
+.faq-swap-box   { background:var(--bg-elevated); border-radius:8px; padding:10px; text-align:center; }
+.faq-swap-role  { font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:4px; }
+.faq-swap-name  { font-size:0.85rem; font-weight:600; }
+.faq-swap-status { font-size:0.72rem; margin-top:3px; font-weight:500; }
+.faq-swap-arrow { font-size:1.1rem; color:var(--text-muted); text-align:center; }
+
+.faq-timeline { display:flex; flex-direction:column; }
+.faq-tl-item  { display:flex; gap:12px; }
+.faq-tl-left  { display:flex; flex-direction:column; align-items:center; width:20px; flex-shrink:0; }
+.faq-tl-dot   { width:10px; height:10px; border-radius:50%; margin-top:3px; flex-shrink:0; }
+.faq-tl-line  { width:1.5px; flex:1; min-height:20px; background:var(--border); }
+.faq-tl-content { padding-bottom:16px; flex:1; }
+.faq-tl-title { font-size:0.8125rem; font-weight:600; margin-bottom:3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.faq-tl-desc  { font-size:0.775rem; color:var(--text-secondary); line-height:1.5; }
+
+.faq-badge { font-size:0.6rem; padding:2px 6px; border-radius:6px; font-weight:500; }
+.faq-badge-purple { background:rgba(127,119,221,0.15); color:#7F77DD; }
+.faq-badge-blue   { background:rgba(55,138,221,0.15); color:#378ADD; }
+.faq-badge-amber  { background:rgba(186,117,23,0.15); color:#BA7517; }
+.faq-badge-green  { background:rgba(29,158,117,0.15); color:#1D9E75; }

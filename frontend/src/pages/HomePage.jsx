@@ -66,6 +66,11 @@ export default function HomePage() {
             <p className="home-greeting">Good game,</p>
             <h1 className="home-username">{user.name}</h1>
           </div>
+          <button
+            onClick={() => navigate('/faq')}
+            style={{background:'none',border:'none',color:'var(--text-muted)',fontSize:'1rem',cursor:'pointer',padding:'4px 6px',borderRadius:'50%',lineHeight:1}}
+            title="How it works"
+          >?</button>
           {seasons.length > 1 && (
             <select
               className="season-switcher"

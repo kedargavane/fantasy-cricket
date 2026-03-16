@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import api from '../utils/api.js';
 import './SettingsPage.css';
 
 export default function SettingsPage() {
   const { user, logout, fetchMe } = useAuth();
+  const navigate = useNavigate();
   const [name, setName]           = useState(user?.name || '');
   const [pwForm, setPwForm]       = useState({ current: '', next: '', confirm: '' });
   const [msg, setMsg]             = useState({ type: '', text: '' });
@@ -158,6 +160,15 @@ export default function SettingsPage() {
         </section>
 
         {/* Sign out */}
+        <section className="settings-section fade-up">
+          <h2 className="settings-section-title">Help</h2>
+          <div className="card">
+            <button className="btn btn-secondary btn-full" onClick={() => navigate('/faq')}>
+              How it works — scoring, backups & rules
+            </button>
+          </div>
+        </section>
+
         <section className="settings-section fade-up">
           <button className="btn btn-danger btn-full" onClick={logout}>
             Sign Out
