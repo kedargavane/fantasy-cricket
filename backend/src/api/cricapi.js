@@ -213,19 +213,32 @@ function extractPlayerStats(match) {
 
   // Build a map of all known teams from scorecard innings
   // "Bangladesh Inning 1" → batting team is "Bangladesh"
+  // "india captains Inning 1" → batting team is "india captains"
   const allTeams = [];
   for (const innings of scorecard) {
     const inningStr = innings.inning || innings.inningsTeam || '';
-    // Extract team name — everything before " Inning"
     const battingTeam = inningStr.replace(/\s+Inning\s+\d+.*$/i, '').trim();
-    if (battingTeam) allTeams.push(battingTeam);
+    if (battingTeam && !allTeams.includes(battingTeam)) allTeams.push(battingTeam);
+  }
+
+  // Also extract team names from batting rows (player.team field if available)
+  // This helps when inning strings repeat the same team name
+  for (const innings of scorecard) {
+    for (const b of (innings.batting || [])) {
+      const t = b.batsman?.team || b.team || '';
+      if (t && !allTeams.includes(t)) allTeams.push(t);
+    }
+    for (const b of (innings.bowling || [])) {
+      const t = b.bowler?.team || b.team || '';
+      if (t && !allTeams.includes(t)) allTeams.push(t);
+    }
   }
 
   for (const innings of scorecard) {
     const inningStr  = innings.inning || innings.inningsTeam || '';
     const battingTeam = inningStr.replace(/\s+Inning\s+\d+.*$/i, '').trim();
     // Bowling team is the other team in this innings
-    const bowlingTeam = allTeams.find(t => t !== battingTeam) || '';
+    const bowlingTeam = allTeams.find(t => t !== battingTeam) || allTeams[1] || '';
 
     // ── Batting ──
     for (const batter of (innings.batting || [])) {

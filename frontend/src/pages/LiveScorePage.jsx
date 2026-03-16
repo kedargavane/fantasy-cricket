@@ -129,17 +129,33 @@ export default function LiveScorePage() {
   const totalPool  = leaderboard.length * entryUnits;
   const numWinners = leaderboard.length >= 5 ? 3 : leaderboard.length >= 2 ? 2 : 0;
 
-  // Build innings data from scores
+  // Build innings data from scores — normalise team names to match match.team_a/team_b
+  const normaliseTeam = (name) => (name || '').toLowerCase().trim();
+  const teamANorm = normaliseTeam(match?.team_a);
+  const teamBNorm = normaliseTeam(match?.team_b);
+  const resolveTeam = (rawTeam) => {
+    const n = normaliseTeam(rawTeam);
+    if (n === teamANorm || teamANorm.includes(n) || n.includes(teamANorm)) return match?.team_a;
+    if (n === teamBNorm || teamBNorm.includes(n) || n.includes(teamBNorm)) return match?.team_b;
+    return rawTeam; // fallback to raw
+  };
+
   const innings = {};
   scores.forEach(s => {
-    if (!innings[s.team]) innings[s.team] = { runs: 0, wickets: 0, batters: [], bowlers: [] };
-    const t = innings[s.team];
+    const team = resolveTeam(s.team);
+    if (!innings[team]) innings[team] = { runs: 0, wickets: 0, batters: [], bowlers: [] };
+    const t = innings[team];
     if ((s.runs > 0 || s.balls_faced > 0) && s.dismissal_type !== 'dnb') {
       t.runs += s.runs || 0;
       if (s.dismissal_type && !['notout','dnb',''].includes(s.dismissal_type)) t.wickets++;
       t.batters.push(s);
     }
-    if (s.overs_bowled > 0) t.bowlers.push(s);
+    if (s.overs_bowled > 0) {
+      // Bowler belongs to OPPOSITE team from batters
+      const bowlerTeam = resolveTeam(s.team);
+      if (!innings[bowlerTeam]) innings[bowlerTeam] = { runs: 0, wickets: 0, batters: [], bowlers: [] };
+      innings[bowlerTeam].bowlers.push(s);
+    }
   });
 
   // View another user's team
@@ -230,7 +246,7 @@ export default function LiveScorePage() {
             </div>
           )}
           {/* Rank trajectory chart */}
-          {snapshots.length > 0 && <RankChart series={snapshots} />}
+          {/* RankChart hidden until data is available */}
 
           {/* Prize pool card */}
           {leaderboard.length >= 2 && (
