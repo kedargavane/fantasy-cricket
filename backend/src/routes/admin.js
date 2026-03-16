@@ -942,3 +942,24 @@ router.post('/matches/manual', async (req, res) => {
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   return res.status(201).json({ message: 'Match added', match, squadCount });
 });
+
+// ── POST /api/admin/fix-match-times ──────────────────────────────────────────
+// One-time fix: append Z to start_time for GMT times missing timezone marker
+router.post('/fix-match-times', (req, res) => {
+  const db = getDb();
+  const matches = db.prepare(
+    "SELECT id, start_time FROM matches WHERE start_time NOT LIKE '%Z' AND start_time NOT LIKE '%+%' AND start_time != ''"
+  ).all();
+
+  const update = db.prepare('UPDATE matches SET start_time = ? WHERE id = ?');
+  const fix = db.transaction(() => {
+    for (const m of matches) {
+      if (m.start_time && m.start_time.includes('T')) {
+        update.run(m.start_time + 'Z', m.id);
+      }
+    }
+  });
+  fix();
+
+  return res.json({ message: `Fixed ${matches.length} match times`, matches: matches.length });
+});

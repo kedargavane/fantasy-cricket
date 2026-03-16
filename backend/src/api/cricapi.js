@@ -58,7 +58,9 @@ async function fetchSeriesMatches(seriesId) {
     venue:           m.venue || '',
     matchType:       normaliseMatchType(m.matchType),
     status:          normaliseStatus(m.matchStarted, m.matchEnded),
-    startTime:       m.dateTimeGMT || m.date || '',
+    startTime:       m.dateTimeGMT
+      ? (m.dateTimeGMT.endsWith('Z') ? m.dateTimeGMT : m.dateTimeGMT + 'Z')
+      : (m.date || ''),
     hasSquad:        m.hasSquad || false,
     fantasyEnabled:  m.fantasyEnabled || false,
     matchStarted:    m.matchStarted || false,
