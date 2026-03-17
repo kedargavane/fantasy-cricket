@@ -322,6 +322,9 @@ function runMigrations(db) {
   try { db.exec('ALTER TABLE matches ADD COLUMN sportmonks_fixture_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN last_ball_count INTEGER NOT NULL DEFAULT 0'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN live_score TEXT DEFAULT NULL'); } catch {}
+  try { db.exec('ALTER TABLE matches ADD COLUMN sportmonks_season_id INTEGER DEFAULT NULL'); } catch {}
+  try { db.exec('ALTER TABLE matches ADD COLUMN localteam_id INTEGER DEFAULT NULL'); } catch {}
+  try { db.exec('ALTER TABLE matches ADD COLUMN visitorteam_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE players ADD COLUMN sportmonks_player_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec("UPDATE matches SET status = 'cancelled' WHERE status NOT IN ('upcoming','live','completed','abandoned','cancelled')"); } catch {}
 
