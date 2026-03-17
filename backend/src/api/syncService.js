@@ -318,12 +318,15 @@ function upsertMatch(seasonId, matchData) {
   // Use sportmonks fixture ID as external_match_id too
   const extId = `sm-${matchData.sportmonksFixtureId}`;
   const result = db.prepare(`
-    INSERT INTO matches (season_id, external_match_id, sportmonks_fixture_id, team_a, team_b, venue, match_type, status, start_time)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'upcoming', ?)
+    INSERT INTO matches (season_id, external_match_id, sportmonks_fixture_id, sportmonks_season_id, localteam_id, visitorteam_id, team_a, team_b, venue, match_type, status, start_time)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'upcoming', ?)
   `).run(
     seasonId,
     extId,
     matchData.sportmonksFixtureId,
+    matchData.sportmonksSeasonId || null,
+    matchData.localteamId || null,
+    matchData.visitorteamId || null,
     matchData.teamA,
     matchData.teamB,
     matchData.venue || '',

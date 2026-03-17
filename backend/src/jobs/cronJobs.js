@@ -125,11 +125,12 @@ function startCronJobs(io) {
   });
 
   // ── 4. Squad sync — every hour ─────────────────────────────────────────────
-  // Syncs squads for upcoming matches with 0 players
+  // Syncs squads for upcoming matches with 0 players using team/season squad endpoint
   cron.schedule('0 * * * *', async () => {
     const db = getDb();
     const matches = db.prepare(`
-      SELECT m.id, m.sportmonks_fixture_id, m.team_a, m.team_b
+      SELECT m.id, m.sportmonks_fixture_id, m.sportmonks_season_id,
+             m.localteam_id, m.visitorteam_id, m.team_a, m.team_b
       FROM matches m
       WHERE m.status = 'upcoming'
       AND m.sportmonks_fixture_id IS NOT NULL
@@ -141,28 +142,32 @@ function startCronJobs(io) {
 
     for (const match of matches) {
       try {
-        // Try lineup first (more accurate — confirmed players)
-        const lineup = await sportmonks.fetchFixtureLineup(match.sportmonks_fixture_id);
-        if (lineup.length > 0) {
-          // Need player names — fetch each player
-          const players = [];
-          for (const entry of lineup) {
-            try {
-              const p = await sportmonks.fetchPlayerById(parseInt(entry.externalPlayerId));
-              players.push({
-                externalPlayerId: entry.externalPlayerId,
-                sportmonksPlayerId: parseInt(entry.externalPlayerId),
-                name: p.name,
-                team: entry.teamId === match.localteam_id ? match.team_a : match.team_b,
-                role: p.role,
-                isPlayingXi: true,
-              });
-            } catch {}
+        if (!match.localteam_id || !match.visitorteam_id || !match.sportmonks_season_id) {
+          console.log(`[squadSync] Match ${match.id}: missing team/season IDs, skipping`);
+          continue;
+        }
+
+        const allPlayers = [];
+
+        // Fetch squad for both teams
+        for (const [teamId, teamName] of [
+          [match.localteam_id, match.team_a],
+          [match.visitorteam_id, match.team_b],
+        ]) {
+          try {
+            const squad = await sportmonks.fetchSquadByTeamAndSeason(teamId, match.sportmonks_season_id);
+            for (const p of squad) {
+              allPlayers.push({ ...p, team: teamName });
+            }
+            console.log(`[squadSync] Match ${match.id}: ${squad.length} players for ${teamName}`);
+          } catch (err) {
+            console.error(`[squadSync] Match ${match.id} team ${teamId} error:`, err.message);
           }
-          if (players.length > 0) {
-            upsertSquad(match.id, players);
-            console.log(`[squadSync] Match ${match.id}: ${players.length} players from lineup`);
-          }
+        }
+
+        if (allPlayers.length > 0) {
+          upsertSquad(match.id, allPlayers);
+          console.log(`[squadSync] Match ${match.id}: total ${allPlayers.length} players synced`);
         }
       } catch (err) {
         console.error(`[squadSync] Match ${match.id} error:`, err.message);

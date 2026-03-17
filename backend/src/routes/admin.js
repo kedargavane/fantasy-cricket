@@ -402,6 +402,51 @@ router.post('/matches/:id/sync-live', async (req, res) => {
   }
 });
 
+// ── POST /api/admin/matches/:id/sync-squad-from/:fixtureId ──────────────────
+// Copy lineup from a completed Sportmonks fixture as squad for this match
+router.post('/matches/:id/sync-squad-from/:fixtureId', async (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const sourceFixtureId = parseInt(req.params.fixtureId, 10);
+
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  try {
+    const sportmonks = require('../api/sportmonks');
+
+    // Fetch lineup from source fixture
+    const data = await fetch(
+      `https://cricket.sportmonks.com/api/v2.0/fixtures/${sourceFixtureId}?api_token=${process.env.SPORTMONKS_TOKEN}&include=lineup`
+    ).then(r => r.json());
+
+    const lineup = data.data?.lineup || [];
+    if (lineup.length === 0) return res.status(400).json({ error: 'No lineup found in source fixture' });
+
+    // Build player list from lineup
+    const players = lineup.map(p => ({
+      externalPlayerId:   String(p.id),
+      sportmonksPlayerId: p.id,
+      name:  p.fullname || `${p.firstname || ''} ${p.lastname || ''}`.trim(),
+      team:  p.lineup?.team_id === data.data?.localteam_id ? match.team_a : match.team_b,
+      role:  normaliseRole(p.position?.name),
+      isPlayingXi: false, // squad only, XI confirmed at toss
+    }));
+
+    upsertSquad(matchId, players);
+
+    const squad = db.prepare(`
+      SELECT p.*, ms.is_playing_xi FROM match_squads ms
+      JOIN players p ON p.id = ms.player_id WHERE ms.match_id = ?
+      ORDER BY p.team, p.name
+    `).all(matchId);
+
+    return res.json({ synced: players.length, squad });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/admin/matches/:id/sync-squad ───────────────────────────────────
 // Pull lineup from Sportmonks
 router.post('/matches/:id/sync-squad', async (req, res) => {
@@ -875,6 +920,9 @@ router.post('/series/preview', async (req, res) => {
 
     const matches = fixtures.map(f => ({
       sportmonksFixtureId: f.sportmonksFixtureId,
+      sportmonksSeasonId:  parseInt(smSeasonId),
+      localteamId:         f.localteamId,
+      visitorteamId:       f.visitorteamId,
       name:                `${teamNames[f.localteamId] || f.localteamId} vs ${teamNames[f.visitorteamId] || f.visitorteamId}`,
       teamA:               teamNames[f.localteamId] || String(f.localteamId),
       teamB:               teamNames[f.visitorteamId] || String(f.visitorteamId),
@@ -1140,6 +1188,46 @@ function normaliseRole(role) {
   if (r.includes('bat'))                          return 'batsman';
   return 'batsman';
 }
+
+// ── POST /api/admin/sync-all-squads ──────────────────────────────────────────
+// Immediately sync squads for all upcoming matches with 0 players
+router.post('/sync-all-squads', async (req, res) => {
+  const db = getDb();
+  const matches = db.prepare(`
+    SELECT m.id, m.sportmonks_season_id, m.localteam_id, m.visitorteam_id, m.team_a, m.team_b
+    FROM matches m
+    WHERE m.status = 'upcoming'
+    AND m.sportmonks_fixture_id IS NOT NULL
+    AND m.localteam_id IS NOT NULL
+    AND (SELECT COUNT(*) FROM match_squads ms WHERE ms.match_id = m.id) = 0
+  `).all();
+
+  if (matches.length === 0) return res.json({ message: 'All squads already loaded', synced: 0 });
+
+  const sportmonks = require('../api/sportmonks');
+  const results = [];
+
+  for (const match of matches) {
+    const allPlayers = [];
+    for (const [teamId, teamName] of [
+      [match.localteam_id, match.team_a],
+      [match.visitorteam_id, match.team_b],
+    ]) {
+      try {
+        const squad = await sportmonks.fetchSquadByTeamAndSeason(teamId, match.sportmonks_season_id);
+        for (const p of squad) allPlayers.push({ ...p, team: teamName });
+      } catch (err) {
+        results.push({ matchId: match.id, error: err.message });
+      }
+    }
+    if (allPlayers.length > 0) {
+      upsertSquad(match.id, allPlayers);
+      results.push({ matchId: match.id, players: allPlayers.length, name: `${match.team_a} vs ${match.team_b}` });
+    }
+  }
+
+  return res.json({ message: `Synced ${results.length} matches`, results });
+});
 
 // ── POST /api/admin/reset-data ────────────────────────────────────────────────
 // Nuclear option: delete all match/season/player data, keep users + feedback

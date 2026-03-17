@@ -192,6 +192,22 @@ async function fetchFixtureScorecard(fixtureId) {
   return { matchInfo, playerStats };
 }
 
+// ── Fetch squad by team and season ──────────────────────────────────────────
+// Returns full squad for a team in a season (pre-match, no toss needed)
+async function fetchSquadByTeamAndSeason(teamId, smSeasonId) {
+  const data = await smGet(`teams/${teamId}/squad/${smSeasonId}`);
+  const team  = data.data || {};
+  const squad = team.squad || [];
+  return squad.map(p => ({
+    externalPlayerId:   String(p.id),
+    sportmonksPlayerId: p.id,
+    name:  p.fullname || `${p.firstname || ''} ${p.lastname || ''}`.trim(),
+    teamId: teamId,
+    role:  normaliseRole(p.position?.name),
+    isPlayingXi: false,
+  }));
+}
+
 // ── Fetch lineup (playing XI) for a fixture ───────────────────────────────────
 async function fetchFixtureLineup(fixtureId) {
   const data = await smGet(`fixtures/${fixtureId}`, { include: 'lineup' });
@@ -232,6 +248,7 @@ module.exports = {
   fetchTeamById,
   fetchPlayerById,
   fetchFixtureScorecard,
+  fetchSquadByTeamAndSeason,
   fetchFixtureLineup,
   fetchLivescores,
   fetchFixtureInfo,
