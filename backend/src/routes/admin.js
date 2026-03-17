@@ -1115,13 +1115,14 @@ function normaliseRole(role) {
 // ── POST /api/admin/sync-all-squads ──────────────────────────────────────────
 // Immediately sync squads for all upcoming matches with 0 players
 router.post('/sync-all-squads', async (req, res) => {
-  const db = getDb();
+  const db    = getDb();
+  const axios = require('axios');
   const matches = db.prepare(`
-    SELECT m.id, m.sportmonks_season_id, m.localteam_id, m.visitorteam_id, m.team_a, m.team_b
+    SELECT m.id, m.sportmonks_fixture_id, m.sportmonks_season_id,
+           m.localteam_id, m.visitorteam_id, m.team_a, m.team_b
     FROM matches m
     WHERE m.status = 'upcoming'
     AND m.sportmonks_fixture_id IS NOT NULL
-    AND m.localteam_id IS NOT NULL
     AND (SELECT COUNT(*) FROM match_squads ms WHERE ms.match_id = m.id) = 0
   `).all();
 
@@ -1131,21 +1132,44 @@ router.post('/sync-all-squads', async (req, res) => {
   const results = [];
 
   for (const match of matches) {
-    const allPlayers = [];
-    for (const [teamId, teamName] of [
-      [match.localteam_id, match.team_a],
-      [match.visitorteam_id, match.team_b],
-    ]) {
-      try {
-        const squad = await sportmonks.fetchSquadByTeamAndSeason(teamId, match.sportmonks_season_id);
-        for (const p of squad) allPlayers.push({ ...p, team: teamName });
-      } catch (err) {
-        results.push({ matchId: match.id, error: err.message });
+    try {
+      let localteamId  = match.localteam_id;
+      let visitorteamId = match.visitorteam_id;
+      let seasonId     = match.sportmonks_season_id;
+
+      // If team IDs missing, fetch from Sportmonks fixture
+      if (!localteamId || !visitorteamId || !seasonId) {
+        const fixtureRes = await axios.get(
+          `https://cricket.sportmonks.com/api/v2.0/fixtures/${match.sportmonks_fixture_id}`,
+          { params: { api_token: process.env.SPORTMONKS_TOKEN }, timeout: 15000 }
+        );
+        const f = fixtureRes.data?.data || {};
+        localteamId   = f.localteam_id;
+        visitorteamId = f.visitorteam_id;
+        seasonId      = f.season_id;
+        // Update match with correct IDs
+        db.prepare('UPDATE matches SET localteam_id=?, visitorteam_id=?, sportmonks_season_id=? WHERE id=?')
+          .run(localteamId, visitorteamId, seasonId, match.id);
       }
-    }
-    if (allPlayers.length > 0) {
-      upsertSquad(match.id, allPlayers);
-      results.push({ matchId: match.id, players: allPlayers.length, name: `${match.team_a} vs ${match.team_b}` });
+
+      const allPlayers = [];
+      for (const [teamId, teamName] of [
+        [localteamId, match.team_a],
+        [visitorteamId, match.team_b],
+      ]) {
+        try {
+          const squad = await sportmonks.fetchSquadByTeamAndSeason(teamId, seasonId);
+          for (const p of squad) allPlayers.push({ ...p, team: teamName });
+        } catch (err) {
+          results.push({ matchId: match.id, team: teamName, error: err.message });
+        }
+      }
+      if (allPlayers.length > 0) {
+        upsertSquad(match.id, allPlayers);
+        results.push({ matchId: match.id, players: allPlayers.length, name: `${match.team_a} vs ${match.team_b}` });
+      }
+    } catch (err) {
+      results.push({ matchId: match.id, error: err.message });
     }
   }
 

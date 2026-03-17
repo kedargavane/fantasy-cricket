@@ -142,8 +142,27 @@ function startCronJobs(io) {
 
     for (const match of matches) {
       try {
-        if (!match.localteam_id || !match.visitorteam_id || !match.sportmonks_season_id) {
-          console.log(`[squadSync] Match ${match.id}: missing team/season IDs, skipping`);
+        let localteamId   = match.localteam_id;
+        let visitorteamId = match.visitorteam_id;
+        let smSeasonId    = match.sportmonks_season_id;
+
+        // Fetch team IDs from Sportmonks if missing
+        if (!localteamId || !visitorteamId || !smSeasonId) {
+          const axios = require('axios');
+          const fr = await axios.get(
+            `https://cricket.sportmonks.com/api/v2.0/fixtures/${match.sportmonks_fixture_id}`,
+            { params: { api_token: process.env.SPORTMONKS_TOKEN }, timeout: 15000 }
+          );
+          const f = fr.data?.data || {};
+          localteamId   = f.localteam_id;
+          visitorteamId = f.visitorteam_id;
+          smSeasonId    = f.season_id;
+          db.prepare('UPDATE matches SET localteam_id=?, visitorteam_id=?, sportmonks_season_id=? WHERE id=?')
+            .run(localteamId, visitorteamId, smSeasonId, match.id);
+        }
+
+        if (!localteamId || !visitorteamId || !smSeasonId) {
+          console.log(`[squadSync] Match ${match.id}: could not resolve team IDs, skipping`);
           continue;
         }
 
@@ -151,11 +170,11 @@ function startCronJobs(io) {
 
         // Fetch squad for both teams
         for (const [teamId, teamName] of [
-          [match.localteam_id, match.team_a],
-          [match.visitorteam_id, match.team_b],
+          [localteamId, match.team_a],
+          [visitorteamId, match.team_b],
         ]) {
           try {
-            const squad = await sportmonks.fetchSquadByTeamAndSeason(teamId, match.sportmonks_season_id);
+            const squad = await sportmonks.fetchSquadByTeamAndSeason(teamId, smSeasonId);
             for (const p of squad) {
               allPlayers.push({ ...p, team: teamName });
             }
