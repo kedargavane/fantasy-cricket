@@ -3,7 +3,7 @@
 const express = require('express');
 const { getDb }                  = require('../db/database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { upsertMatch, upsertSquad, processAutoSwaps, recomputeTeamPoints } = require('../api/syncService');
+const { upsertMatch, upsertSquad, recomputeTeamPoints } = require('../api/syncService');
 const { distributePrizes }       = require('../engines/prizeEngine');
 const { sendMatchReminders }     = require('../jobs/cronJobs');
 const { discoverMatches }        = require('../api/discoverMatches');
@@ -678,6 +678,7 @@ router.get('/dashboard', (req, res) => {
 
 function finaliseMatch(db, matchId, seasonId) {
   // 1. Ensure auto-swaps are processed
+  const { processAutoSwaps } = require('../engines/swapEngine');
   processAutoSwaps(matchId);
 
   // 2. Final recompute of all team points
