@@ -86,4 +86,71 @@ function resolveTeam(userTeam, playingXiIds) {
   return { finalTeam, captainId: finalCaptainId, viceCaptainId: finalViceCaptainId, swapLog };
 }
 
-module.exports = { resolveTeam };
+function processAutoSwaps(matchId) {
+  const { getDb } = require('../db/database');
+  const db = getDb();
+
+  const xiPlayers = db.prepare(
+    'SELECT player_id FROM match_squads WHERE match_id = ? AND is_playing_xi = 1'
+  ).all(matchId);
+  const playingXiIds = new Set(xiPlayers.map(r => r.player_id));
+
+  const userTeams = db.prepare(`
+    SELECT id, user_id, captain_id, vice_captain_id
+    FROM user_teams
+    WHERE match_id = ? AND swap_processed_at IS NULL AND locked_at IS NOT NULL
+  `).all(matchId);
+
+  const getTeamPlayers = db.prepare(`
+    SELECT p.id, p.name, utp.is_backup, utp.backup_order
+    FROM user_team_players utp
+    JOIN players p ON p.id = utp.player_id
+    WHERE utp.user_team_id = ?
+    ORDER BY utp.is_backup ASC, utp.backup_order ASC
+  `);
+
+  const updateResolved = db.prepare(`
+    UPDATE user_teams SET
+      resolved_captain_id      = ?,
+      resolved_vice_captain_id = ?,
+      swap_processed_at        = datetime('now')
+    WHERE id = ?
+  `);
+
+  const insertSwapLog = db.prepare(`
+    INSERT OR IGNORE INTO user_team_swaps
+      (user_team_id, swapped_out_player_id, swapped_in_player_id, inherited_role)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  const processAll = db.transaction(() => {
+    for (const team of userTeams) {
+      const allPlayers  = getTeamPlayers.all(team.id);
+      const mainPlayers = allPlayers.filter(p => !p.is_backup);
+      const backups     = allPlayers.filter(p => p.is_backup)
+                                    .sort((a, b) => a.backup_order - b.backup_order);
+
+      if (mainPlayers.length === 0) continue;
+
+      const resolved = resolveTeam(
+        { mainPlayers, backups, captainId: team.captain_id, viceCaptainId: team.vice_captain_id },
+        playingXiIds
+      );
+
+      updateResolved.run(resolved.captainId, resolved.viceCaptainId, team.id);
+
+      for (const swap of resolved.swapLog) {
+        if (swap.type === 'swapped') {
+          try {
+            insertSwapLog.run(team.id, swap.swappedOut.id, swap.swappedIn.id, swap.inheritedRole);
+          } catch {}
+        }
+      }
+    }
+  });
+
+  processAll();
+  return userTeams.length;
+}
+
+module.exports = { resolveTeam, processAutoSwaps };

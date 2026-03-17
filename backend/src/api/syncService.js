@@ -68,7 +68,31 @@ async function syncPlayingXi(matchId, sportmonksFixtureId) {
   });
   doSync();
 
+  // Award +4 Playing XI bonus immediately to all confirmed XI players
+  // by upserting minimal stat records with isPlayingXi=true
+  const xiPlayers = db.prepare(
+    'SELECT player_id FROM match_squads WHERE match_id = ? AND is_playing_xi = 1'
+  ).all(matchId);
+
+  const upsertXiStat = db.prepare(`
+    INSERT INTO player_match_stats
+      (match_id, player_id, runs, balls_faced, fours, sixes, dismissal_type,
+       overs_bowled, wickets, runs_conceded, maidens,
+       catches, stumpings, run_outs, fantasy_points, updated_at)
+    VALUES (?, ?, 0, 0, 0, 0, 'dnb', 0, 0, 0, 0, 0, 0, 0, 4, datetime('now'))
+    ON CONFLICT(match_id, player_id) DO NOTHING
+  `);
+
+  const { calculateFantasyPoints, DEFAULT_SCORING_CONFIG } = require('../engines/scoringEngine');
+  const insertXi = db.transaction(() => {
+    for (const { player_id } of xiPlayers) {
+      upsertXiStat.run(matchId, player_id);
+    }
+  });
+  insertXi();
+
   await processAutoSwaps(matchId);
+  recomputeTeamPoints(matchId);
   return { confirmed: true, count: lineup.length };
 }
 
@@ -286,6 +310,34 @@ async function syncLiveMatch(matchId, sportmonksFixtureId) {
     }
 
     upsertStats(matchId, playerStats);
+
+    // Give +4 to all confirmed XI players not yet in scorecard
+    // (players who haven't batted/bowled yet still get playing XI bonus)
+    const xiPlayers = db.prepare(
+      'SELECT player_id FROM match_squads WHERE match_id = ? AND is_playing_xi = 1'
+    ).all(matchId);
+    const hasStats = db.prepare(
+      'SELECT player_id FROM player_match_stats WHERE match_id = ?'
+    ).all(matchId).map(r => r.player_id);
+    const hasStatsSet = new Set(hasStats);
+
+    const insertXiBonus = db.prepare(`
+      INSERT INTO player_match_stats
+        (match_id, player_id, runs, balls_faced, fours, sixes, dismissal_type,
+         overs_bowled, wickets, runs_conceded, maidens,
+         catches, stumpings, run_outs, fantasy_points, updated_at)
+      VALUES (?, ?, 0, 0, 0, 0, 'dnb', 0, 0, 0, 0, 0, 0, 0, 4, datetime('now'))
+      ON CONFLICT(match_id, player_id) DO NOTHING
+    `);
+    const addXiBonuses = db.transaction(() => {
+      for (const { player_id } of xiPlayers) {
+        if (!hasStatsSet.has(player_id)) {
+          insertXiBonus.run(matchId, player_id);
+        }
+      }
+    });
+    addXiBonuses();
+
     recomputeTeamPoints(matchId);
 
     const newStatus = matchInfo.matchEnded ? 'completed' : 'live';

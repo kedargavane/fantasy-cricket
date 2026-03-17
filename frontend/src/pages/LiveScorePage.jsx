@@ -41,7 +41,12 @@ export default function LiveScorePage() {
     setLoadingTeam(true);
     try {
       const res = await api.get(`/teams/user/${userId}/match/${matchId}`);
-      setViewTeam({ name: userName, players: res.data.team.players, total: totalPts });
+      setViewTeam({ 
+        name: userName, 
+        players: res.data.team.players, 
+        swaps: res.data.team.swaps || [],
+        total: totalPts 
+      });
     } catch {}
     finally { setLoadingTeam(false); }
   }
@@ -172,15 +177,28 @@ export default function LiveScorePage() {
         {loadingTeam
           ? <Spinner center />
           : <>
-              {viewTeam.players.filter(p => !p.is_backup).map(p => (
-                <PlayerRow key={p.id} player={p} pts={p.fantasy_points} role={p.role_in_team} isBackup={false} isPlaying={p.is_playing_xi} />
-              ))}
-              {viewTeam.players.some(p => p.is_backup) && (
-                <div className="ls-section-label">Backups</div>
-              )}
-              {viewTeam.players.filter(p => p.is_backup).map(p => (
-                <PlayerRow key={p.id} player={p} pts={p.fantasy_points} role={null} isBackup={true} isPlaying={p.is_playing_xi} />
-              ))}
+              {(() => {
+                const swappedInIds = new Set((viewTeam.swaps||[]).map(s => s.swapped_in_player_id));
+                const swappedOutIds = new Set((viewTeam.swaps||[]).map(s => s.swapped_out_player_id));
+                const mainPlayers = viewTeam.players.filter(p => !p.is_backup);
+                const backupPlayers = viewTeam.players.filter(p => p.is_backup);
+                
+                return <>
+                  {mainPlayers.map(p => (
+                    <PlayerRow key={p.id} player={p} pts={p.fantasy_points} 
+                      role={p.role_in_team} isBackup={false} 
+                      isPlaying={p.is_playing_xi}
+                      swappedOut={swappedOutIds.has(p.id)} />
+                  ))}
+                  {backupPlayers.map(p => (
+                    <PlayerRow key={p.id} player={p} pts={p.fantasy_points}
+                      role={swappedInIds.has(p.id) ? p.role_in_team : null}
+                      isBackup={!swappedInIds.has(p.id)}
+                      swappedIn={swappedInIds.has(p.id)}
+                      isPlaying={p.is_playing_xi} />
+                  ))}
+                </>;
+              })()}
             </>
         }
       </div>
@@ -524,18 +542,24 @@ function RankChart({ series }) {
   );
 }
 
-function PlayerRow({ player, pts, role, isBackup, isPlaying }) {
-  const multi = role === 'captain' ? 2 : role === 'vc' ? 1.5 : 1;
+function PlayerRow({ player, pts, role, isBackup, isPlaying, swappedIn, swappedOut }) {
+  const multi = role === 'captain' ? 2 : role === 'vice_captain' ? 1.5 : 1;
   const total = pts !== undefined ? Math.round(pts * multi) : undefined;
   return (
-    <div className={`ls-player-row ${isBackup ? 'ls-backup' : ''} ${isPlaying === false ? 'ls-not-playing' : ''}`}>
+    <div className={`ls-player-row ${isBackup ? 'ls-backup' : ''} ${isPlaying === false || swappedOut ? 'ls-not-playing' : ''}`}>
       <div className="ls-player-left">
-        {role === 'captain' && <span className="ls-badge ls-cap">C</span>}
-        {role === 'vc'      && <span className="ls-badge ls-vc">V</span>}
-        {!role              && <span className="ls-badge-empty" />}
+        {role === 'captain'      && <span className="ls-badge ls-cap">C</span>}
+        {role === 'vice_captain' && <span className="ls-badge ls-vc">V</span>}
+        {swappedIn  && !role     && <span className="ls-badge" style={{background:'rgba(29,158,117,0.2)',color:'#1D9E75',fontSize:'0.6rem'}}>↑IN</span>}
+        {swappedOut              && <span className="ls-badge" style={{background:'rgba(248,113,113,0.2)',color:'#f87171',fontSize:'0.6rem'}}>OUT</span>}
+        {!role && !swappedIn && !swappedOut && <span className="ls-badge-empty" />}
         <div className="ls-player-info">
           <span className="ls-player-name">{player.name}</span>
-          <span className="ls-player-team">{player.team}{isPlaying === false ? ' · not playing' : ''}</span>
+          <span className="ls-player-team">
+            {player.team}
+            {swappedOut ? ' · swapped out' : isPlaying === false ? ' · not playing' : ''}
+            {swappedIn ? ' · swapped in' : ''}
+          </span>
         </div>
       </div>
       <span className={`ls-player-pts ${total > 0 ? 'ls-pts-active' : ''}`}>
