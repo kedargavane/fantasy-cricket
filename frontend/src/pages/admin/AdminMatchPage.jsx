@@ -39,7 +39,7 @@ export default function AdminMatchPage() {
   async function syncSquad() {
     try {
       const res = await api.post(`/admin/matches/${matchId}/sync-squad`);
-      flash('success', `Synced ${res.data.synced} players from CricAPI`);
+      flash('success', `Synced ${res.data.synced} players from Sportmonks`);
       const sRes = await api.get(`/matches/${matchId}/squad`);
       setSquad(sRes.data.squad || []);
     } catch (err) {
@@ -105,7 +105,7 @@ export default function AdminMatchPage() {
           <div className="flex-col gap-4">
             <div className="card">
               {[
-                ['Match ID', match.external_match_id],
+                ['Sportmonks Fixture ID', match.sportmonks_fixture_id || match.external_match_id],
                 ['Type', match.match_type?.toUpperCase()],
                 ['Venue', match.venue || '—'],
                 ['Start Time', new Date(match.start_time).toLocaleString('en-IN')],
@@ -126,7 +126,7 @@ export default function AdminMatchPage() {
           <div className="flex-col gap-4">
             <div className="flex gap-2">
               <button className="btn btn-secondary btn-sm" onClick={syncSquad}>
-                ↻ Sync from CricAPI
+                ↻ Sync from Sportmonks
               </button>
               <span className="text-muted text-sm" style={{alignSelf:'center'}}>
                 {xiPlayers.length}/12 Playing XI set
@@ -165,7 +165,7 @@ export default function AdminMatchPage() {
 
             {squad.length === 0 && (
               <div className="card text-center text-secondary">
-                No squad loaded. Click "Sync from CricAPI" to fetch.
+                No squad loaded. Click "Sync from Sportmonks" to fetch.
               </div>
             )}
           </div>

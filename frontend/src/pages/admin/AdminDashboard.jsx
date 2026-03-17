@@ -133,7 +133,7 @@ export default function AdminDashboard() {
 
             <div className="card mb-3">
               <p className="text-secondary text-sm">
-                Matches are auto-discovered from CricAPI every hour based on the series IDs below.
+                Matches are imported via Admin → Discover using Sportmonks season IDs.
                 Squads are auto-synced 48 hours before each match.
               </p>
               {season.series_ids && JSON.parse(season.series_ids || '[]').length > 0 ? (
@@ -230,7 +230,7 @@ function SeriesIdsForm({ season, onSaved }) {
   return (
     <form onSubmit={save} className="card mb-4">
       <p className="text-sm text-secondary mb-3">
-        Enter one CricAPI series ID per line. Find series IDs at{' '}
+        Enter Sportmonks season IDs (e.g. 1805 for LLC, 1795 for IPL, 1715 for T20I).
         <a href="https://cricketdata.org/cricket-data-formats/series" target="_blank" rel="noreferrer" className="text-cyan">
           cricketdata.org/series
         </a>
@@ -253,7 +253,7 @@ function SeriesIdsForm({ season, onSaved }) {
         </button>
       </div>
       <p className="text-muted text-sm mt-3">
-        💡 For today's LLC match: series ID is in the CricAPI match URL after the last hyphen grouping.
+        💡 Use Admin → Discover to import matches via Sportmonks season ID.
         Example for IPL 2026: find it at cricketdata.org/series and paste here.
       </p>
     </form>
@@ -320,7 +320,7 @@ function CreateMatchForm({ seasonId, onCreated, onCancel }) {
       <h3 className="text-sm font-bold mb-4" style={{ color: 'var(--accent-primary)' }}>Manual Match Entry</h3>
       <div className="form-grid">
         <div className="input-group">
-          <label className="input-label">CricAPI Match ID</label>
+          <label className="input-label">Sportmonks Fixture ID</label>
           <input className="input" name="sportmonksFixtureId" value={form.sportmonksFixtureId} onChange={handle} placeholder="Sportmonks fixture ID (e.g. 69443)" required />
         </div>
         <div className="input-group">

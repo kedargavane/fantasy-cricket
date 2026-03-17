@@ -102,7 +102,7 @@ export default function TeamPickerPage() {
   }
 
   // Split squad into two columns using match team names as anchors
-  // This handles any variation in how CricAPI returns team names
+  // This handles any variation in how Sportmonks returns team names
   const { teamA, teamB, playersA, playersB } = useMemo(() => {
     if (!match || squad.length === 0) return { teamA: '', teamB: '', playersA: [], playersB: [] };
 
@@ -120,7 +120,7 @@ export default function TeamPickerPage() {
     }
 
     // If still empty (team field blank in DB) — split by position
-    // First half = team A, second half = team B (CricAPI returns them grouped)
+    // First half = team A, second half = team B (Sportmonks returns them grouped)
     if (pA.length === 0 && pB.length === 0) {
       const half = Math.ceil(squad.length / 2);
       pA = squad.slice(0, half);

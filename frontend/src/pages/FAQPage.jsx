@@ -105,7 +105,7 @@ export default function FAQPage() {
                 <span className="faq-update-val">post match</span>
               </div>
             </div>
-            <p className="faq-note">Data comes from CricAPI. A 1–3 minute delay vs live TV is normal and affects all players equally.</p>
+            <p className="faq-note">Data comes from Sportmonks. A 1–3 minute delay vs live TV is normal and affects all players equally.</p>
           </div>
         </section>
 
