@@ -22,6 +22,8 @@ export default function SeriesImportPage() {
   const [result, setResult]     = useState(null);
   const [error, setError]       = useState('');
 
+  const [filter, setFilter] = useState('');
+
   async function preview() {
     if (!smSeasonId.trim()) return setError('Enter a Sportmonks season ID');
     setError(''); setMatches(null); setSelected(new Set()); setResult(null);
@@ -45,9 +47,11 @@ export default function SeriesImportPage() {
     if (!targetSeasonId) return setError('Select a season to import into');
     setError(''); setImporting(true);
     try {
+      // Send full fixture objects so backend doesn't need to re-fetch team names
+      const selectedFixtures = (matches || []).filter(m => selected.has(m.sportmonksFixtureId));
       const res = await api.post('/admin/series/import', {
-        seasonId:   parseInt(targetSeasonId),
-        fixtureIds: Array.from(selected),
+        seasonId:  parseInt(targetSeasonId),
+        fixtures:  selectedFixtures,
       });
       setResult(res.data);
       preview();
@@ -117,12 +121,15 @@ export default function SeriesImportPage() {
 
         {matches && (
           <>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-              <span className="text-muted text-sm">{matches.length} fixtures found</span>
-              <button className="btn btn-ghost btn-sm" onClick={selectAll}>Select all</button>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,gap:8}}>
+              <input className="input input-sm" placeholder="Filter by team name..."
+                value={filter} onChange={e => setFilter(e.target.value)}
+                style={{flex:1,fontSize:'0.8rem'}} />
+              <span className="text-muted text-sm" style={{flexShrink:0}}>{matches.length} total</span>
+              <button className="btn btn-ghost btn-sm" onClick={selectAll} style={{flexShrink:0}}>Select all</button>
             </div>
 
-            {matches.map(m => (
+            {matches.filter(m => !filter || m.name.toLowerCase().includes(filter.toLowerCase())).map(m => (
               <div key={m.sportmonksFixtureId}
                 onClick={() => !m.alreadyAdded && toggleMatch(m.sportmonksFixtureId)}
                 className="card mb-2"

@@ -77,7 +77,7 @@ router.post('/seasons', (req, res) => {
 // ── PATCH /api/admin/seasons/:id ──────────────────────────────────────────────
 router.patch('/seasons/:id', (req, res) => {
   const db = getDb();
-  const { status, maxPlayers } = req.body;
+  const { status, maxPlayers, inviteCode, seriesIds } = req.body;
 
   if (status && !['upcoming','active','completed'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status' });
@@ -85,7 +85,9 @@ router.patch('/seasons/:id', (req, res) => {
 
   const fields = [];
   const values = [];
-  if (status)     { fields.push('status = ?');      values.push(status); }
+  if (status)                  { fields.push('status = ?');      values.push(status); }
+  if (maxPlayers)              { fields.push('max_players = ?'); values.push(maxPlayers); }
+  if (inviteCode)              { fields.push('invite_code = ?'); values.push(inviteCode); }
   if (seriesIds !== undefined) { fields.push('series_ids = ?'); values.push(JSON.stringify(seriesIds)); }
 
   if (fields.length === 0) return res.status(400).json({ error: 'Nothing to update' });
@@ -872,14 +874,13 @@ router.post('/series/preview', async (req, res) => {
     }
 
     const matches = fixtures.map(f => ({
-      externalMatchId:      `sm-${f.sportmonksFixtureId}`,
-      sportmonksFixtureId:  f.sportmonksFixtureId,
-      name:                 `${teamNames[f.localteamId]} vs ${teamNames[f.visitorteamId]}`,
-      teamA:                teamNames[f.localteamId],
-      teamB:                teamNames[f.visitorteamId],
-      startTime:            f.startingAt,
-      status:               f.status,
-      alreadyAdded:         existing.has(f.sportmonksFixtureId),
+      sportmonksFixtureId: f.sportmonksFixtureId,
+      name:                `${teamNames[f.localteamId] || f.localteamId} vs ${teamNames[f.visitorteamId] || f.visitorteamId}`,
+      teamA:               teamNames[f.localteamId] || String(f.localteamId),
+      teamB:               teamNames[f.visitorteamId] || String(f.visitorteamId),
+      startTime:           f.startingAt,
+      status:              f.status,
+      alreadyAdded:        existing.has(f.sportmonksFixtureId),
     }));
 
     return res.json({ seasonId: smSeasonId, matches });
@@ -890,63 +891,45 @@ router.post('/series/preview', async (req, res) => {
 
 // ── POST /api/admin/series/import ────────────────────────────────────────────
 // Import selected Sportmonks fixtures into a season
+// Expects fixtures array with teamA, teamB, startTime already resolved from preview
 router.post('/series/import', async (req, res) => {
-  const { seasonId, fixtureIds } = req.body;
-  if (!seasonId || !Array.isArray(fixtureIds) || fixtureIds.length === 0) {
-    return res.status(400).json({ error: 'seasonId and fixtureIds[] required' });
+  const { seasonId, fixtures } = req.body;
+  if (!seasonId || !Array.isArray(fixtures) || fixtures.length === 0) {
+    return res.status(400).json({ error: 'seasonId and fixtures[] required' });
   }
 
   const db = getDb();
   const season = db.prepare('SELECT id FROM seasons WHERE id = ?').get(seasonId);
   if (!season) return res.status(404).json({ error: 'Season not found' });
 
-  try {
-    const sportmonks = require('../api/sportmonks');
-    const results = [];
+  const results = [];
 
-    for (const fixtureId of fixtureIds) {
-      const existing = db.prepare(
-        'SELECT id FROM matches WHERE sportmonks_fixture_id = ?'
-      ).get(fixtureId);
+  for (const f of fixtures) {
+    const existing = db.prepare(
+      'SELECT id FROM matches WHERE sportmonks_fixture_id = ?'
+    ).get(f.sportmonksFixtureId);
 
-      if (existing) {
-        results.push({ fixtureId, status: 'already_exists', matchId: existing.id });
-        continue;
-      }
-
-      // Fetch fixture details
-      const info = await sportmonks.fetchFixtureInfo(fixtureId);
-      const teamA = await sportmonks.fetchTeamById(
-        db.prepare('SELECT localteam_id FROM matches WHERE sportmonks_fixture_id = ?').get(fixtureId)?.localteam_id || 0
-      ).catch(() => ({ name: 'Team A' }));
-
-      // Get fixture with teams
-      const fixtureData = await sportmonks.smGet ? null : null;
-      const smData = await fetch(
-        `https://cricket.sportmonks.com/api/v2.0/fixtures/${fixtureId}?api_token=${process.env.SPORTMONKS_TOKEN}&include=localteam,visitorteam`
-      ).then(r => r.json());
-
-      const f = smData.data || {};
-      const matchData = {
-        sportmonksFixtureId: fixtureId,
-        teamA:     f.localteam?.name  || 'Team A',
-        teamB:     f.visitorteam?.name || 'Team B',
-        venue:     '',
-        matchType: 't20',
-        startTime: f.starting_at,
-      };
-
-      const matchId = upsertMatch(seasonId, matchData);
-      results.push({ fixtureId, status: 'imported', matchId, name: `${matchData.teamA} vs ${matchData.teamB}` });
+    if (existing) {
+      results.push({ fixtureId: f.sportmonksFixtureId, status: 'already_exists', matchId: existing.id });
+      continue;
     }
 
-    return res.json({
-      message: `Imported ${results.filter(r => r.status === 'imported').length} fixtures`,
-      results,
+    const matchId = upsertMatch(seasonId, {
+      sportmonksFixtureId: f.sportmonksFixtureId,
+      teamA:     f.teamA,
+      teamB:     f.teamB,
+      venue:     f.venue || '',
+      matchType: 't20',
+      startTime: f.startTime,
     });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
+
+    results.push({ fixtureId: f.sportmonksFixtureId, status: 'imported', matchId, name: f.name });
   }
+
+  return res.json({
+    message: `Imported ${results.filter(r => r.status === 'imported').length} fixtures`,
+    results,
+  });
 });
 
 // ── DELETE /api/admin/users/:id ───────────────────────────────────────────────
