@@ -1165,20 +1165,27 @@ router.post('/reset-data', (req, res) => {
   const { confirm } = req.body;
   if (confirm !== 'RESET') return res.status(400).json({ error: 'Send confirm: RESET' });
 
-  db.exec(`
-    DELETE FROM rank_snapshots;
-    DELETE FROM player_match_stats;
-    DELETE FROM match_squads;
-    DELETE FROM user_team_players;
-    DELETE FROM user_teams;
-    DELETE FROM prize_distributions;
-    DELETE FROM match_prize_pools;
-    DELETE FROM match_config;
-    DELETE FROM matches;
-    DELETE FROM players;
-    DELETE FROM season_memberships;
-    DELETE FROM seasons;
-  `);
+  // Disable foreign keys temporarily for clean wipe
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.exec(`
+      DELETE FROM rank_snapshots;
+      DELETE FROM player_match_stats;
+      DELETE FROM match_squads;
+      DELETE FROM user_team_players;
+      DELETE FROM user_teams;
+      DELETE FROM prize_distributions;
+      DELETE FROM match_prize_pools;
+      DELETE FROM match_config;
+      DELETE FROM matches;
+      DELETE FROM players;
+      DELETE FROM season_memberships;
+      DELETE FROM seasons;
+      DELETE FROM push_subscriptions;
+    `);
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
 
   console.log('[admin] Full data reset performed');
   return res.json({ message: 'All season/match/player data deleted. Users and feedback preserved.' });
