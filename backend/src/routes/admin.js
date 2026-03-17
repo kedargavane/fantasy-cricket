@@ -416,9 +416,11 @@ router.post('/matches/:id/sync-squad-from/:fixtureId', async (req, res) => {
     const sportmonks = require('../api/sportmonks');
 
     // Fetch lineup from source fixture
-    const data = await fetch(
-      `https://cricket.sportmonks.com/api/v2.0/fixtures/${sourceFixtureId}?api_token=${process.env.SPORTMONKS_TOKEN}&include=lineup`
-    ).then(r => r.json());
+    const axios = require('axios');
+    const { data } = await axios.get(
+      `https://cricket.sportmonks.com/api/v2.0/fixtures/${sourceFixtureId}`,
+      { params: { api_token: process.env.SPORTMONKS_TOKEN, include: 'lineup' }, timeout: 15000 }
+    );
 
     const lineup = data.data?.lineup || [];
     if (lineup.length === 0) return res.status(400).json({ error: 'No lineup found in source fixture' });

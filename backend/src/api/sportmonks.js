@@ -6,6 +6,7 @@
  * Base URL: https://cricket.sportmonks.com/api/v2.0
  */
 
+const axios    = require('axios');
 const BASE_URL = 'https://cricket.sportmonks.com/api/v2.0';
 
 function getToken() {
@@ -15,15 +16,11 @@ function getToken() {
 }
 
 async function smGet(endpoint, params = {}) {
-  const url = new URL(`${BASE_URL}/${endpoint}`);
-  url.searchParams.set('api_token', getToken());
-  for (const [k, v] of Object.entries(params)) {
-    url.searchParams.set(k, v);
-  }
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`Sportmonks ${endpoint} HTTP ${res.status}`);
-  const json = await res.json();
-  return json;
+  const res = await axios.get(`${BASE_URL}/${endpoint}`, {
+    params:  { api_token: getToken(), ...params },
+    timeout: 15000,
+  });
+  return res.data;
 }
 
 // ── Role normalisation ────────────────────────────────────────────────────────
