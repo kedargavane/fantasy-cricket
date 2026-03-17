@@ -82,16 +82,7 @@ router.post('/', async (req, res) => {
       return { adminId, seasonId, matchId, inviteCode: 'GYARAH1' };
     })();
 
-    // Auto-sync squad from CricAPI after creating match
-    try {
-      const { fetchMatchSquad } = require('../api/cricapi');
-      const { upsertSquad }     = require('../api/syncService');
-      const players = await fetchMatchSquad('c26cb45e-361e-4613-8d7b-226e8255d67c');
-      if (players.length > 0) upsertSquad(result.matchId, players);
-      console.log(`[bootstrap] Synced ${players.length} players`);
-    } catch (e) {
-      console.warn('[bootstrap] Squad sync failed (will need manual sync):', e.message);
-    }
+    // Squad sync handled by Sportmonks hourly cron
 
     return res.json({
       message: 'Bootstrap successful! Welcome to Gyarah Sapne 🏏',

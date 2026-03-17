@@ -6,7 +6,6 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { upsertMatch, upsertSquad, recomputeTeamPoints } = require('../api/syncService');
 const { distributePrizes }       = require('../engines/prizeEngine');
 const { sendMatchReminders }     = require('../jobs/cronJobs');
-const { discoverMatches }        = require('../api/discoverMatches');
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
@@ -110,20 +109,13 @@ router.post('/seasons/:id/sync-schedule', async (req, res) => {
     return res.status(400).json({ error: 'No series IDs configured for this season. Add them first.' });
   }
 
-  try {
-    const { runAutoSchedule } = require('../api/autoSchedule');
-    const result = await runAutoSchedule();
-    return res.json({ message: 'Schedule sync complete', ...result });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
+  return res.json({ message: 'Auto-schedule removed. Use Admin → Discover to import fixtures via Sportmonks.' });
 });
 
 // ── GET /api/admin/discover ──────────────────────────────────────────────────
-// Browse upcoming matches from CricAPI and approve them into the season
+// Redirect to series import page
 router.get('/discover', async (req, res) => {
-  const db = getDb();
-  return discoverMatches(req, res, db);
+  return res.json({ message: 'Use POST /admin/series/preview and /admin/series/import instead' });
 });
 
 // ── POST /api/admin/discover/approve ─────────────────────────────────────────
