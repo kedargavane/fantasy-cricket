@@ -294,7 +294,7 @@ function AdminMatchRow({ match, navigate }) {
 
 function CreateMatchForm({ seasonId, onCreated, onCancel }) {
   const [form, setForm] = useState({
-    externalMatchId: '', teamA: '', teamB: '', venue: '',
+    sportmonksFixtureId: '', teamA: '', teamB: '', venue: '',
     matchType: 't20', startTime: '', entryUnits: 300,
   });
   const [saving, setSaving] = useState(false);
@@ -321,7 +321,7 @@ function CreateMatchForm({ seasonId, onCreated, onCancel }) {
       <div className="form-grid">
         <div className="input-group">
           <label className="input-label">CricAPI Match ID</label>
-          <input className="input" name="externalMatchId" value={form.externalMatchId} onChange={handle} placeholder="UUID from CricAPI" required />
+          <input className="input" name="sportmonksFixtureId" value={form.sportmonksFixtureId} onChange={handle} placeholder="Sportmonks fixture ID (e.g. 69443)" required />
         </div>
         <div className="input-group">
           <label className="input-label">Match Type</label>
