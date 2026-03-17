@@ -14,7 +14,7 @@ const KNOWN_SERIES = [
 
 export default function SeriesImportPage() {
   const navigate = useNavigate();
-  const [seriesId, setSeriesId]     = useState('');
+  const [seasonId, setSeriesId]     = useState('');
   const [seasonId, setSeasonId]     = useState(1);
   const [matches, setMatches]       = useState(null);
   const [selected, setSelected]     = useState(new Set());
@@ -24,16 +24,16 @@ export default function SeriesImportPage() {
   const [error, setError]           = useState('');
 
   async function preview() {
-    if (!seriesId.trim()) return setError('Enter a series ID');
+    if (!seasonId.trim()) return setError('Enter a series ID');
     setError(''); setMatches(null); setSelected(new Set()); setResult(null);
     setLoading(true);
     try {
-      const res = await api.post('/admin/series/preview', { seriesId: seriesId.trim() });
+      const res = await api.post('/admin/series/preview', { seasonId: seasonId.trim() });
       const ms = res.data.matches;
       setMatches(ms);
       // Auto-select upcoming + live matches that aren't already added
       const autoSelect = new Set(
-        ms.filter(m => !m.alreadyAdded && !m.matchEnded).map(m => m.externalMatchId)
+        ms.filter(m => !m.alreadyAdded && !m.matchEnded).map(m => m.sportmonksFixtureId)
       );
       setSelected(autoSelect);
     } catch (e) {
@@ -45,9 +45,9 @@ export default function SeriesImportPage() {
     if (selected.size === 0) return setError('Select at least one match');
     setError(''); setImporting(true);
     try {
-      const res = await api.post('/admin/series/import', {
+      const res2 = await api.post('/admin/series/import', {
         seasonId,
-        seriesId: seriesId.trim(),
+        seasonId: seasonId.trim(),
         matchIds: Array.from(selected),
       });
       setResult(res.data);
@@ -67,7 +67,7 @@ export default function SeriesImportPage() {
   }
 
   function toggleAll() {
-    const available = matches.filter(m => !m.alreadyAdded).map(m => m.externalMatchId);
+    const available = matches.filter(m => !m.alreadyAdded).map(m => m.sportmonksFixtureId);
     if (selected.size === available.length) setSelected(new Set());
     else setSelected(new Set(available));
   }
@@ -90,8 +90,8 @@ export default function SeriesImportPage() {
             <button key={s.id} onClick={() => setSeriesId(s.id)}
               style={{
                 padding:'8px 12px', borderRadius:8, border:'1px solid var(--border)',
-                background: seriesId === s.id ? 'rgba(0,229,255,0.1)' : 'var(--bg-surface)',
-                borderColor: seriesId === s.id ? 'var(--accent-primary)' : 'var(--border)',
+                background: seasonId === s.id ? 'rgba(0,229,255,0.1)' : 'var(--bg-surface)',
+                borderColor: seasonId === s.id ? 'var(--accent-primary)' : 'var(--border)',
                 color:'var(--text-primary)', cursor:'pointer', textAlign:'left',
                 display:'flex', justifyContent:'space-between', alignItems:'center',
               }}>
@@ -106,7 +106,7 @@ export default function SeriesImportPage() {
       <div style={{marginBottom:12}}>
         <p style={{fontSize:'0.72rem',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}}>Or enter series ID</p>
         <input
-          value={seriesId} onChange={e => setSeriesId(e.target.value)}
+          value={seasonId} onChange={e => setSeriesId(e.target.value)}
           placeholder="e.g. 87c62aac-bc3c-4738-ab93-19da0690488f"
           style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg-elevated)',color:'var(--text-primary)',fontSize:'0.78rem',fontFamily:'var(--font-mono)'}}
         />
@@ -146,18 +146,18 @@ export default function SeriesImportPage() {
 
           <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:16}}>
             {[...matches].sort((a,b) => new Date(a.startTime)-new Date(b.startTime)).map(m => (
-              <div key={m.externalMatchId}
-                onClick={() => !m.alreadyAdded && toggleMatch(m.externalMatchId)}
+              <div key={m.sportmonksFixtureId}
+                onClick={() => !m.alreadyAdded && toggleMatch(m.sportmonksFixtureId)}
                 style={{
                   display:'flex', alignItems:'center', gap:10,
                   padding:'10px 12px', borderRadius:8,
                   border:'1px solid var(--border)',
-                  background: selected.has(m.externalMatchId) ? 'rgba(0,229,255,0.08)' : 'var(--bg-surface)',
-                  borderColor: selected.has(m.externalMatchId) ? 'var(--accent-primary)' : m.alreadyAdded ? 'var(--border)' : 'var(--border)',
+                  background: selected.has(m.sportmonksFixtureId) ? 'rgba(0,229,255,0.08)' : 'var(--bg-surface)',
+                  borderColor: selected.has(m.sportmonksFixtureId) ? 'var(--accent-primary)' : m.alreadyAdded ? 'var(--border)' : 'var(--border)',
                   cursor: m.alreadyAdded ? 'default' : 'pointer',
                   opacity: m.alreadyAdded ? 0.5 : 1,
                 }}>
-                <input type="checkbox" checked={selected.has(m.externalMatchId) || m.alreadyAdded}
+                <input type="checkbox" checked={selected.has(m.sportmonksFixtureId) || m.alreadyAdded}
                   disabled={m.alreadyAdded} readOnly
                   style={{width:14,height:14,flexShrink:0,accentColor:'var(--accent-primary)'}}
                 />

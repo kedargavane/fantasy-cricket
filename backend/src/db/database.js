@@ -79,15 +79,18 @@ function createTables(db) {
       id                INTEGER PRIMARY KEY AUTOINCREMENT,
       season_id         INTEGER NOT NULL REFERENCES seasons(id),
       external_match_id TEXT    NOT NULL UNIQUE,
+      sportmonks_fixture_id INTEGER DEFAULT NULL,
       team_a            TEXT    NOT NULL,
       team_b            TEXT    NOT NULL,
       venue             TEXT,
       match_type        TEXT    NOT NULL DEFAULT 't20'
                                 CHECK (match_type IN ('t20','odi','test')),
       status            TEXT    NOT NULL DEFAULT 'upcoming'
-                                CHECK (status IN ('upcoming','live','completed','abandoned')),
+                                CHECK (status IN ('upcoming','live','completed','abandoned','cancelled')),
       start_time        TEXT    NOT NULL,
       last_synced       TEXT,
+      last_ball_count   INTEGER NOT NULL DEFAULT 0,
+      live_score        TEXT    DEFAULT NULL,
       created_at        TEXT    NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -107,7 +110,8 @@ function createTables(db) {
       name               TEXT NOT NULL,
       team               TEXT NOT NULL,
       role               TEXT CHECK (role IN ('batsman','bowler','allrounder','wicketkeeper',NULL)),
-      external_player_id TEXT NOT NULL UNIQUE
+      external_player_id TEXT NOT NULL UNIQUE,
+      sportmonks_player_id INTEGER DEFAULT NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_players_external ON players(external_player_id);
@@ -311,6 +315,56 @@ module.exports = { initDb, getDb, closeDb, runMigrations };
 
 // Run after createTables — safe migrations for schema additions
 function runMigrations(db) {
+  // ── Add sportmonks columns ────────────────────────────────────────────────
+  try { db.exec('ALTER TABLE matches ADD COLUMN sportmonks_fixture_id INTEGER DEFAULT NULL'); } catch {}
+  try { db.exec('ALTER TABLE matches ADD COLUMN last_ball_count INTEGER NOT NULL DEFAULT 0'); } catch {}
+  try { db.exec('ALTER TABLE matches ADD COLUMN live_score TEXT DEFAULT NULL'); } catch {}
+  try { db.exec('ALTER TABLE players ADD COLUMN sportmonks_player_id INTEGER DEFAULT NULL'); } catch {}
+  try { db.exec("UPDATE matches SET status = 'cancelled' WHERE status NOT IN ('upcoming','live','completed','abandoned','cancelled')"); } catch {}
+
+  // ── Add feedback table ────────────────────────────────────────────────────
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      type TEXT NOT NULL DEFAULT 'feature',
+      title TEXT NOT NULL,
+      details TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open',
+      resolution TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status)');
+  } catch {}
+
+  // ── Add rank_snapshots table ──────────────────────────────────────────────
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS rank_snapshots (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      match_id     INTEGER NOT NULL REFERENCES matches(id),
+      user_team_id INTEGER NOT NULL REFERENCES user_teams(id),
+      over         REAL    NOT NULL DEFAULT 0,
+      total_pts    INTEGER NOT NULL DEFAULT 0,
+      rank         INTEGER NOT NULL DEFAULT 0,
+      created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+    )`);
+  } catch {}
+
+  // ── Add push_subscriptions table ─────────────────────────────────────────
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      endpoint   TEXT    NOT NULL UNIQUE,
+      p256dh     TEXT    NOT NULL,
+      auth       TEXT    NOT NULL,
+      created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    )`);
+  } catch {}
+
+
   // Migration: add feedback table
   try {
     db.exec(`CREATE TABLE IF NOT EXISTS feedback (
