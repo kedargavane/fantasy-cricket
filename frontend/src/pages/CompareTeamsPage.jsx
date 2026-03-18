@@ -95,20 +95,26 @@ export default function CompareTeamsPage() {
         const B = comparison.teamB;
         const commonIds = new Set(comparison.common.playerIds);
 
-        // Sort: common first, unique after
-        const allA = [...A.players].sort((a,b) => (commonIds.has(b.id)?1:0) - (commonIds.has(a.id)?1:0));
-        const allB = [...B.players].sort((a,b) => (commonIds.has(b.id)?1:0) - (commonIds.has(a.id)?1:0));
+        // Separate mains and backups
+        const mainA = A.players.filter(p => !p.is_backup);
+        const mainB = B.players.filter(p => !p.is_backup);
+        const backupA = A.players.filter(p => p.is_backup);
+        const backupB = B.players.filter(p => p.is_backup);
+
+        // Sort: common first, unique after (mains only)
+        const allA = [...mainA].sort((a,b) => (commonIds.has(b.id)?1:0) - (commonIds.has(a.id)?1:0));
+        const allB = [...mainB].sort((a,b) => (commonIds.has(b.id)?1:0) - (commonIds.has(a.id)?1:0));
 
         // Separate into common and unique
         const commonA  = allA.filter(p => commonIds.has(p.id));
         const uniqueA  = allA.filter(p => !commonIds.has(p.id));
         const uniqueB  = allB.filter(p => !commonIds.has(p.id));
 
-        // Points totals per group
+        // Points totals per group (include backups in total)
         const commonPtsA  = commonA.reduce((s,p) => s + (p.effective_pts||0), 0);
-        const commonPtsB  = comparison.teamB.players.filter(p=>commonIds.has(p.id)).reduce((s,p)=>s+(p.effective_pts||0),0);
-        const uniquePtsA  = uniqueA.reduce((s,p) => s + (p.effective_pts||0), 0);
-        const uniquePtsB  = uniqueB.reduce((s,p) => s + (p.effective_pts||0), 0);
+        const commonPtsB  = comparison.teamB.players.filter(p=>commonIds.has(p.id)&&!p.is_backup).reduce((s,p)=>s+(p.effective_pts||0),0);
+        const uniquePtsA  = uniqueA.reduce((s,p) => s + (p.effective_pts||0), 0) + backupA.reduce((s,p) => s + (p.effective_pts||0), 0);
+        const uniquePtsB  = uniqueB.reduce((s,p) => s + (p.effective_pts||0), 0) + backupB.reduce((s,p) => s + (p.effective_pts||0), 0);
         const totalGap    = A.total_fantasy_points - B.total_fantasy_points;
 
         // Max rows for unique section

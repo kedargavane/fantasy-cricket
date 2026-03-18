@@ -337,8 +337,8 @@ router.get('/compare/:matchId', requireAuth, (req, res) => {
       JOIN user_teams ut ON ut.id = utp.user_team_id
       LEFT JOIN player_match_stats pms ON pms.player_id = p.id AND pms.match_id = ut.match_id
       LEFT JOIN match_squads ms ON ms.player_id = p.id AND ms.match_id = ut.match_id
-      WHERE utp.user_team_id = ? AND utp.is_backup = 0
-      ORDER BY pms.fantasy_points DESC NULLS LAST
+      WHERE utp.user_team_id = ?
+      ORDER BY utp.is_backup ASC, pms.fantasy_points DESC NULLS LAST
     `).all(ut.id);
 
     // Compute effective points with multipliers
