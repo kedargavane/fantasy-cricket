@@ -330,10 +330,16 @@ export default function LiveScorePage() {
                     <span className="ls-innings-team">{team}</span>
                     <span className="ls-innings-score">
                       {(() => {
-                        // Try to get score from live_score string
-                        const part = match?.live_score?.split(' | ').find(p => p.toLowerCase().includes(team.toLowerCase().split(' ')[0]));
+                        // Match by full team name in live_score string
+                        const parts = match?.live_score?.split(' | ') || [];
+                        const part = parts.find(p => p.toLowerCase().startsWith(team.toLowerCase()));
                         const m2 = part?.match(/(\d+\/\d+)\s+\(([^)]+)\)/);
-                        return m2 ? `${m2[1]} (${m2[2]} ov)` : `${data.runs}/${data.wickets}`;
+                        if (m2) return `${m2[1]} (${m2[2]} ov)`;
+                        // Fallback: use index based on innings order
+                        const idx = Object.keys(innings).indexOf(team);
+                        const fallback = parts[idx];
+                        const m3 = fallback?.match(/(\d+\/\d+)\s+\(([^)]+)\)/);
+                        return m3 ? `${m3[1]} (${m3[2]} ov)` : `${data.runs}/${data.wickets}`;
                       })()}
                     </span>
                   </div>

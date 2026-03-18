@@ -90,7 +90,7 @@ async function fetchPlayerById(playerId) {
 // Returns matchInfo + playerStats array ready for upsertStats
 async function fetchFixtureScorecard(fixtureId) {
   const data = await smGet(`fixtures/${fixtureId}`, {
-    include: 'batting,bowling,runs,localteam,visitorteam',
+    include: 'batting,bowling,runs,localteam,visitorteam,lineup',
   });
   const f = data.data || {};
 
@@ -127,6 +127,12 @@ async function fetchFixtureScorecard(fixtureId) {
     })),
   };
 
+  // Build player name lookup from lineup
+  const lineupNames = {};
+  for (const p of (f.lineup || [])) {
+    if (p.id) lineupNames[p.id] = p.fullname || `${p.firstname||''} ${p.lastname||''}`.trim();
+  }
+
   // Build player stats map keyed by sportmonks player_id
   const statsMap = {};
 
@@ -134,6 +140,7 @@ async function fetchFixtureScorecard(fixtureId) {
     if (!statsMap[pid]) {
       statsMap[pid] = {
         externalPlayerId: String(pid),
+        name:             lineupNames[pid] || null,
         team:             teamId === localTeamId ? localTeamName : visitorTeamName,
         runs:             0,
         ballsFaced:       0,
