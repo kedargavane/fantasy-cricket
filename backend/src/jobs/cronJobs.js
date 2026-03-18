@@ -71,23 +71,45 @@ function startCronJobs(io) {
 
   // ── 2. Live match detector — every minute ──────────────────────────────────
   // Checks Sportmonks livescores to auto-set match status to 'live'
+  // Also reverts 'live' back to 'upcoming' if Sportmonks reports Delayed/NS
   cron.schedule('* * * * *', async () => {
     const db = getDb();
     try {
       const liveFixtures = await sportmonks.fetchLivescores();
-      if (liveFixtures.length === 0) return;
+      const liveFixtureMap = new Map(liveFixtures.map(f => [f.sportmonksFixtureId, f]));
 
-      const liveIds = liveFixtures.map(f => f.sportmonksFixtureId);
-
-      for (const fixtureId of liveIds) {
+      // Set upcoming → live for fixtures now live on Sportmonks
+      for (const [fixtureId, fixture] of liveFixtureMap) {
+        if (fixture.status !== 'Live') continue;
         const match = db.prepare(
-          "SELECT id, status FROM matches WHERE sportmonks_fixture_id = ? AND status = 'upcoming'"
+          "SELECT id FROM matches WHERE sportmonks_fixture_id = ? AND status = 'upcoming'"
         ).get(fixtureId);
-
         if (match) {
           db.prepare("UPDATE matches SET status = 'live' WHERE id = ?").run(match.id);
           console.log(`[liveDetector] Match ${match.id} (fixture ${fixtureId}) is now live`);
           io.to(`match:${match.id}`).emit('matchStarted', { matchId: match.id });
+        }
+      }
+
+      // Revert live → upcoming if Sportmonks reports Delayed/NS/Postponed
+      const ourLiveMatches = db.prepare(
+        "SELECT id, sportmonks_fixture_id FROM matches WHERE status = 'live' AND sportmonks_fixture_id IS NOT NULL"
+      ).all();
+
+      for (const match of ourLiveMatches) {
+        const fixture = liveFixtureMap.get(match.sportmonks_fixture_id);
+        // If not in livescores at all, or status is Delayed/NS/Postp
+        const smStatus = fixture?.status || '';
+        if (!fixture || smStatus === 'Delayed' || smStatus === 'NS' || smStatus === 'Postp.') {
+          // Double-check with fixture endpoint before reverting
+          try {
+            const info = await sportmonks.fetchFixtureInfo(match.sportmonks_fixture_id);
+            if (info.status === 'Delayed' || info.status === 'NS' || info.status === 'Postp.') {
+              db.prepare("UPDATE matches SET status = 'upcoming' WHERE id = ?").run(match.id);
+              console.log(`[liveDetector] Match ${match.id} reverted to upcoming (${info.status})`);
+              io.to(`match:${match.id}`).emit('matchDelayed', { matchId: match.id });
+            }
+          } catch {}
         }
       }
     } catch (err) {
