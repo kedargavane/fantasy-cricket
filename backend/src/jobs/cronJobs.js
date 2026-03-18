@@ -18,8 +18,8 @@ function oversToTotalBalls(overs) {
 
 function startCronJobs(io) {
 
-  // ── 1. Live poller — every 60 seconds ─────────────────────────────────────
-  cron.schedule('* * * * *', async () => {
+  // ── 1. Live poller — every 30 seconds (two staggered cron jobs) ────────────
+  async function pollLiveMatches() {
     const db = getDb();
     const liveMatches = db.prepare(
       "SELECT id, sportmonks_fixture_id FROM matches WHERE status = 'live' AND sportmonks_fixture_id IS NOT NULL"
@@ -32,11 +32,10 @@ function startCronJobs(io) {
         const info = await sportmonks.fetchFixtureInfo(match.sportmonks_fixture_id);
 
         // Count total balls from score
-        const currentBalls = info.score.reduce((sum, s) => sum + oversToTotalBalls(s.o), 0);
+        const currentBalls = info.score.reduce((sum, s) => sum + oversToTotalBalls(s.overs), 0);
         const lastBalls    = matchBallCount.get(match.id) ?? -1;
 
         if (info.status === 'Finished' || info.status === 'Aban.') {
-          // Match ended — do final sync
           console.log(`[livePoller] Match ${match.id} ended, final sync...`);
           const result = await syncLiveMatch(match.id, match.sportmonks_fixture_id);
           if (result.success) {
@@ -67,6 +66,12 @@ function startCronJobs(io) {
         console.error(`[livePoller] match ${match.id} error:`, err.message);
       }
     }
+  }
+  // Run at every minute and every minute + 30 seconds
+  cron.schedule('* * * * *', pollLiveMatches);
+  cron.schedule('* * * * * *', async () => {
+    const sec = new Date().getSeconds();
+    if (sec === 30) await pollLiveMatches();
   });
 
   // ── 2. Live match detector — every minute ──────────────────────────────────
@@ -79,14 +84,16 @@ function startCronJobs(io) {
       const liveFixtureMap = new Map(liveFixtures.map(f => [f.sportmonksFixtureId, f]));
 
       // Set upcoming → live for fixtures now live on Sportmonks
+      // Sportmonks uses: 'Live', '1st Innings', '2nd Innings', '3rd Innings', '4th Innings', 'Innings Break'
+      const LIVE_STATUSES = new Set(['Live', '1st Innings', '2nd Innings', '3rd Innings', '4th Innings', 'Innings Break', 'Lunch', 'Tea', 'Stumps', 'Int.']);
       for (const [fixtureId, fixture] of liveFixtureMap) {
-        if (fixture.status !== 'Live') continue;
+        if (!LIVE_STATUSES.has(fixture.status)) continue;
         const match = db.prepare(
           "SELECT id FROM matches WHERE sportmonks_fixture_id = ? AND status = 'upcoming'"
         ).get(fixtureId);
         if (match) {
           db.prepare("UPDATE matches SET status = 'live' WHERE id = ?").run(match.id);
-          console.log(`[liveDetector] Match ${match.id} (fixture ${fixtureId}) is now live`);
+          console.log(`[liveDetector] Match ${match.id} (fixture ${fixtureId}) is now live (${fixture.status})`);
           io.to(`match:${match.id}`).emit('matchStarted', { matchId: match.id });
         }
       }
@@ -130,8 +137,7 @@ function startCronJobs(io) {
       WHERE status = 'upcoming'
       AND sportmonks_fixture_id IS NOT NULL
       AND start_time <= ?
-      AND start_time >= ?
-    `).all(twoHours.toISOString(), now.toISOString());
+    `).all(twoHours.toISOString());
 
     for (const match of upcoming) {
       try {

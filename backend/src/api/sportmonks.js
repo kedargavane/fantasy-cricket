@@ -210,8 +210,8 @@ async function fetchFixtureLineup(fixtureId) {
   const data = await smGet(`fixtures/${fixtureId}`, { include: 'lineup' });
   const lineup = data.data?.lineup || [];
   return lineup.map(p => ({
-    externalPlayerId: String(p.player_id),
-    teamId:           p.team_id,
+    externalPlayerId: String(p.id || p.player_id),
+    teamId:           p.lineup?.team_id || p.team_id,
     isPlayingXi:      true,
   }));
 }
