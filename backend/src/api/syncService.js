@@ -342,7 +342,7 @@ async function syncLiveMatch(matchId, sportmonksFixtureId) {
 
     const newStatus = matchInfo.matchEnded ? 'completed' : 'live';
     const scoreStr  = matchInfo.score.map(s => {
-      const teamName = s.teamId === matchInfo.teamA ? matchInfo.teamA : matchInfo.teamB;
+      const teamName = s.teamName || (s.teamId === matchInfo.localTeamId ? matchInfo.teamA : matchInfo.teamB);
       return `${teamName} ${s.r}/${s.w} (${s.o})`;
     }).join(' | ');
 

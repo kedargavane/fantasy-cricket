@@ -107,16 +107,20 @@ async function fetchFixtureScorecard(fixtureId) {
     'Postp.':   'upcoming',
   };
 
+  const LIVE_STATUSES = new Set(['Live','1st Innings','2nd Innings','3rd Innings','4th Innings','Innings Break','Lunch','Tea','Stumps','Int.']);
   const matchInfo = {
     sportmonksFixtureId: f.id,
-    matchStarted: f.status === 'Live' || f.status === 'Finished',
-    matchEnded:   f.status === 'Finished',
-    status:       statusMap[f.status] || 'upcoming',
+    matchStarted: LIVE_STATUSES.has(f.status) || f.status === 'Finished',
+    matchEnded:   f.status === 'Finished' || f.status === 'Aban.',
+    status:       statusMap[f.status] || (LIVE_STATUSES.has(f.status) ? 'live' : 'upcoming'),
     teamA:        localTeamName,
     teamB:        visitorTeamName,
+    localTeamId:  localTeamId,
+    visitorTeamId: visitorTeamId,
     score:        (f.runs || []).map(r => ({
       inning:  r.inning,
       teamId:  r.team_id,
+      teamName: r.team_id === localTeamId ? localTeamName : visitorTeamName,
       r:       r.score,
       w:       r.wickets,
       o:       r.overs,
@@ -182,7 +186,7 @@ async function fetchFixtureScorecard(fixtureId) {
     p.oversBowled   = rawOvers;
     p.wickets       = parseInt(b.wickets || 0, 10);
     p.runsConceded  = parseInt(b.runs    || 0, 10);
-    p.maidens       = parseInt(b.medians || 0, 10);
+    p.maidens       = parseInt(b.maiden || b.medians || 0, 10);
   }
 
   const playerStats = Object.values(statsMap);
