@@ -67,12 +67,9 @@ function startCronJobs(io) {
       }
     }
   }
-  // Run at every minute and every minute + 30 seconds
-  cron.schedule('* * * * *', pollLiveMatches);
-  cron.schedule('* * * * * *', async () => {
-    const sec = new Date().getSeconds();
-    if (sec === 30) await pollLiveMatches();
-  });
+  // Poll every 30 seconds using setInterval (Sportmonks is pull-only, no webhooks)
+  setInterval(pollLiveMatches, 30000);
+  console.log('[cron] Live poller running every 30s via setInterval');
 
   // ── 2. Live match detector — every minute ──────────────────────────────────
   // Checks Sportmonks livescores to auto-set match status to 'live'
