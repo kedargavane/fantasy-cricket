@@ -87,7 +87,10 @@ export default function LiveScorePage() {
     try {
       const socket = io(SOCKET_URL, { transports: ['websocket'] });
       socketRef.current = socket;
-      socket.emit('joinMatch', matchId);
+      socket.on('connect', () => {
+        socket.emit('joinMatch', matchId);
+        console.log('[socket] joined match', matchId);
+      });
       socket.on('injection', (data) => {
         setInjection(data);
         setTimeout(() => setInjection(null), 5000);
