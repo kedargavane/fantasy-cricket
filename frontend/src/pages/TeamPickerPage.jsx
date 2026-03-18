@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import api from '../utils/api.js';
 import Spinner from '../components/common/Spinner.jsx';
 import './TeamPickerPage.css';
