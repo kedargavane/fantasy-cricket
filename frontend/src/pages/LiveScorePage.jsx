@@ -97,10 +97,12 @@ export default function LiveScorePage() {
       });
       socket.on('statsUpdate', async () => {
         try {
-          const [sRes, lRes] = await Promise.all([
+          const [mRes, sRes, lRes] = await Promise.all([
+            api.get(`/matches/${matchId}`),
             api.get(`/matches/${matchId}/scores`),
             api.get(`/matches/${matchId}/leaderboard`),
           ]);
+          setMatch(mRes.data.match);
           setScores(sRes.data.scores || []);
           setBoard(lRes.data.leaderboard || []);
           setLastUpdate(new Date());
@@ -255,15 +257,21 @@ export default function LiveScorePage() {
       {/* Tab 0/1: Leaderboard */}
       {((match?.status === 'completed' && tab === 1) || (match?.status !== 'completed' && tab === 0)) && (
         <div className="ls-content">
-          {/* Match score summary */}
-          {Object.keys(innings).length > 0 && (
+          {/* Match score summary — use live_score from match for accuracy */}
+          {match?.live_score && (
             <div className="ls-match-summary">
-              {Object.entries(innings).map(([team, data]) => (
-                <div key={team} className="ls-summary-team">
-                  <span className="ls-summary-name">{team}</span>
-                  <span className="ls-summary-score">{data.runs}/{data.wickets}</span>
-                </div>
-              ))}
+              {match.live_score.split(' | ').map((part, i) => {
+                // Parse "Team Name 167/9 (19)" format
+                const match2 = part.match(/^(.+?)\s+(\d+\/\d+)\s+\(([^)]+)\)$/);
+                if (!match2) return null;
+                const [, teamName, score, overs] = match2;
+                return (
+                  <div key={i} className="ls-summary-team">
+                    <span className="ls-summary-name">{teamName.toUpperCase()}</span>
+                    <span className="ls-summary-score">{score} <span style={{fontSize:'0.75rem',color:'var(--color-text-secondary)'}}>({overs} ov)</span></span>
+                  </div>
+                );
+              })}
             </div>
           )}
           {/* Rank trajectory chart */}
@@ -320,7 +328,14 @@ export default function LiveScorePage() {
                 <div key={team} className="ls-innings">
                   <div className="ls-innings-header">
                     <span className="ls-innings-team">{team}</span>
-                    <span className="ls-innings-score">{data.runs}/{data.wickets}</span>
+                    <span className="ls-innings-score">
+                      {(() => {
+                        // Try to get score from live_score string
+                        const part = match?.live_score?.split(' | ').find(p => p.toLowerCase().includes(team.toLowerCase().split(' ')[0]));
+                        const m2 = part?.match(/(\d+\/\d+)\s+\(([^)]+)\)/);
+                        return m2 ? `${m2[1]} (${m2[2]} ov)` : `${data.runs}/${data.wickets}`;
+                      })()}
+                    </span>
                   </div>
                   {data.batters.length > 0 && (
                     <>
