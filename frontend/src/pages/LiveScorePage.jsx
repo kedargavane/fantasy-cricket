@@ -25,6 +25,9 @@ export default function LiveScorePage() {
   const [loadingTeam, setLoadingTeam] = useState(false);
   const [compareA, setCompareA] = useState(0);
   const [compareB, setCompareB] = useState(0);
+  const [inlineCompare, setInlineCompare] = useState(null);
+  const [loadingCompare, setLoadingCompare] = useState(false);
+  const [compareAutoLoaded, setCompareAutoLoaded] = useState(false);
   const TABS = match?.status === 'completed'
     ? ['Result', ...BASE_TABS]
     : BASE_TABS;
@@ -59,9 +62,18 @@ export default function LiveScorePage() {
       ]);
       const m = sRes.data.match;
       setMatch(m);
+      // compareA/B also set when board loads below
       if (m?.status === 'completed') setTab(0); // default to Result tab for completed
       setScores(sRes.data.scores || []);
-      setBoard(lRes.data.leaderboard || []);
+      const lb = lRes.data.leaderboard || [];
+      setBoard(lb);
+      // Auto-set compare to rank #1 and #2 and load inline compare
+      if (lb.length >= 2) {
+        const aId = lb[0].user_id;
+        const bId = lb[1].user_id;
+        setCompareA(prev => prev || aId);
+        setCompareB(prev => prev || bId);
+      }
       try {
         const snRes = await api.get(`/matches/${matchId}/rank-snapshots`);
         setSnapshots(snRes.data.series || []);
@@ -81,6 +93,24 @@ export default function LiveScorePage() {
       } catch {}
     } catch {}
     finally { setLoading(false); }
+  }
+
+  useEffect(() => {
+    const compareTab = match?.status === 'completed' ? 3 : 2;
+    if (tab === compareTab && compareA && compareB && compareA !== compareB && !inlineCompare && !compareAutoLoaded) {
+      setCompareAutoLoaded(true);
+      loadInlineCompare(compareA, compareB);
+    }
+  }, [tab, compareA, compareB]);
+
+  async function loadInlineCompare(userA, userB) {
+    if (!userA || !userB || userA === userB) return;
+    setLoadingCompare(true);
+    try {
+      const res = await api.get(`/teams/compare/${matchId}?userA=${userA}&userB=${userB}`);
+      setInlineCompare(res.data);
+    } catch {}
+    finally { setLoadingCompare(false); }
   }
 
   function setupSocket() {
@@ -104,7 +134,15 @@ export default function LiveScorePage() {
           ]);
           setMatch(mRes.data.match);
           setScores(sRes.data.scores || []);
-          setBoard(lRes.data.leaderboard || []);
+          const lb = lRes.data.leaderboard || [];
+      setBoard(lb);
+      // Auto-set compare to rank #1 and #2 and load inline compare
+      if (lb.length >= 2) {
+        const aId = lb[0].user_id;
+        const bId = lb[1].user_id;
+        setCompareA(prev => prev || aId);
+        setCompareB(prev => prev || bId);
+      }
           setLastUpdate(new Date());
         } catch {}
       });
@@ -471,10 +509,34 @@ export default function LiveScorePage() {
         <div className="ls-content">
           {scores.length === 0
             ? <div className="ls-empty">No player scores yet</div>
-            : scores.map(p => (
-                <PlayerRow key={p.player_id}
-                  player={{name:p.name,team:p.team,id:p.player_id}}
-                  pts={p.fantasy_points} role={null} isBackup={false} isPlaying={p.is_playing_xi} />
+            : [...scores].sort((a,b) => (b.fantasy_points||0) - (a.fantasy_points||0)).map(p => (
+                <div key={p.player_id} style={{
+                  display:'flex',alignItems:'center',gap:10,padding:'10px 14px',
+                  borderBottom:'0.5px solid var(--border)'
+                }}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:'flex',alignItems:'center',gap:5}}>
+                      {p.is_playing_xi ? <span style={{width:6,height:6,borderRadius:'50%',background:'#00E5FF',flexShrink:0}} /> : null}
+                      <span style={{fontSize:'0.875rem',fontWeight:500}}>{p.name}</span>
+                    </div>
+                    <div style={{fontSize:'0.7rem',color:'var(--text-muted)',marginTop:2}}>
+                      {p.team?.split(' ').slice(0,2).join(' ')} · {p.role?.slice(0,3)}
+                      {' · '}
+                      {[
+                        p.runs > 0 && `${p.runs}r`,
+                        p.wickets > 0 && `${p.wickets}w`,
+                        p.catches > 0 && `${p.catches}ct`,
+                        p.stumpings > 0 && `${p.stumpings}st`,
+                        p.overs_bowled > 0 && !p.wickets && `${p.overs_bowled}ov`,
+                      ].filter(Boolean).join(' · ') || (p.is_playing_xi ? 'XI' : 'DNB')}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontFamily:'var(--font-mono)',fontSize:'0.9rem',fontWeight:700,
+                    color: p.fantasy_points > 0 ? 'var(--accent-primary)' : 'var(--text-muted)',
+                    flexShrink:0
+                  }}>{p.fantasy_points || 0}</span>
+                </div>
               ))
           }
         </div>
@@ -564,6 +626,91 @@ function ResultTab({ result }) {
                 {p.wickets>0&&<span style={{fontSize:'0.68rem',background:'var(--bg-elevated)',padding:'2px 6px',borderRadius:4}}>{p.wickets}w</span>}
               </div>
               <span style={{fontFamily:'var(--font-mono)',fontSize:'0.875rem',color:'var(--accent-primary)',flexShrink:0}}>{p.fantasy_points}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InlineCompare({ data }) {
+  const A = data.teamA;
+  const B = data.teamB;
+  const commonIds = new Set(data.common.playerIds);
+  const gap = A.total_fantasy_points - B.total_fantasy_points;
+
+  const commonA = A.players.filter(p => commonIds.has(p.id));
+  const uniqueA = A.players.filter(p => !commonIds.has(p.id));
+  const uniqueB = B.players.filter(p => !commonIds.has(p.id));
+
+  function MiniCell({ player, right }) {
+    if (!player) return <div style={{flex:1}} />;
+    const isCap = player.role_in_team === 'captain';
+    const isVC  = player.role_in_team === 'vice_captain';
+    const pts   = player.effective_pts || 0;
+    const isXI  = player.is_playing_xi === 1;
+    return (
+      <div style={{flex:1,display:'flex',alignItems:'center',gap:5,justifyContent:right?'flex-end':'flex-start',minWidth:0}}>
+        {!right && (isCap ? <span style={{fontSize:'0.6rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(186,117,23,0.2)',color:'#cc8800'}}>C</span>
+          : isVC ? <span style={{fontSize:'0.6rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(0,188,212,0.2)',color:'#00bcd4'}}>V</span> : null)}
+        {!right && isXI && <span style={{width:5,height:5,borderRadius:'50%',background:'#00E5FF',flexShrink:0}} />}
+        <span style={{fontSize:'0.78rem',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{player.name.split(' ').pop()}</span>
+        {right && isXI && <span style={{width:5,height:5,borderRadius:'50%',background:'#00E5FF',flexShrink:0}} />}
+        {right && (isCap ? <span style={{fontSize:'0.6rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(186,117,23,0.2)',color:'#cc8800'}}>C</span>
+          : isVC ? <span style={{fontSize:'0.6rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(0,188,212,0.2)',color:'#00bcd4'}}>V</span> : null)}
+        <span style={{fontFamily:'var(--font-mono)',fontSize:'0.8rem',fontWeight:700,color:pts>0?'var(--accent-primary)':'var(--text-muted)',flexShrink:0,minWidth:24,textAlign:'center'}}>{pts}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden'}}>
+      {/* Score bar */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr auto 1fr',gap:8,padding:'10px 14px',borderBottom:'0.5px solid var(--border)',background:'var(--bg-surface)'}}>
+        <div>
+          <div style={{fontSize:'0.7rem',color:'var(--text-muted)'}}>{A.user_name}</div>
+          <div style={{fontSize:'1.3rem',fontWeight:700,color:'var(--accent-primary)'}}>{A.total_fantasy_points}</div>
+        </div>
+        <div style={{display:'flex',alignItems:'center'}}>
+          <span style={{padding:'3px 8px',borderRadius:12,fontSize:'0.72rem',fontWeight:700,
+            background:gap>0?'rgba(29,158,117,0.2)':gap<0?'rgba(248,113,113,0.2)':'rgba(128,128,128,0.2)',
+            color:gap>0?'#1D9E75':gap<0?'#f87171':'var(--text-muted)'}}>
+            {gap>0?'+':''}{gap} pts
+          </span>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:'0.7rem',color:'var(--text-muted)'}}>{B.user_name}</div>
+          <div style={{fontSize:'1.3rem',fontWeight:700,color:'var(--accent-primary)'}}>{B.total_fantasy_points}</div>
+        </div>
+      </div>
+
+      {/* Common players */}
+      <div style={{padding:'6px 0'}}>
+        <div style={{fontSize:'0.65rem',color:'var(--text-muted)',padding:'4px 14px',fontWeight:600}}>
+          🤝 {commonA.length} common · {data.common.ptsA} vs {data.common.ptsB}
+        </div>
+        {commonA.map((p, i) => {
+          const pb = B.players.find(x => x.id === p.id);
+          return (
+            <div key={p.id} style={{display:'flex',gap:8,padding:'5px 14px',borderBottom:'0.5px solid var(--border)'}}>
+              <MiniCell player={p} right={false} />
+              <MiniCell player={pb} right={true} />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Unique players */}
+      {(uniqueA.length > 0 || uniqueB.length > 0) && (
+        <div style={{padding:'6px 0',borderTop:'0.5px solid var(--border)'}}>
+          <div style={{fontSize:'0.65rem',color:'var(--text-muted)',padding:'4px 14px',fontWeight:600}}>
+            ⚡ {Math.max(uniqueA.length,uniqueB.length)} unique · {uniqueA.reduce((s,p)=>s+(p.effective_pts||0),0)} vs {uniqueB.reduce((s,p)=>s+(p.effective_pts||0),0)}
+          </div>
+          {Array.from({length:Math.max(uniqueA.length,uniqueB.length)}).map((_,i) => (
+            <div key={i} style={{display:'flex',gap:8,padding:'5px 14px',borderBottom:'0.5px solid var(--border)'}}>
+              <MiniCell player={uniqueA[i]} right={false} />
+              <MiniCell player={uniqueB[i]} right={true} />
             </div>
           ))}
         </div>
