@@ -55,12 +55,13 @@ function finaliseMatch(matchId) {
     prizes.filter(p => p.grossUnits > 0).length,
     distributionRule);
 
-  const poolId = poolResult.lastInsertRowid ||
-    db.prepare('SELECT id FROM match_prize_pools WHERE match_id = ?').get(matchId).id;
+  // lastInsertRowid is 0 on ON CONFLICT UPDATE — always fetch the actual id
+  const poolId = db.prepare('SELECT id FROM match_prize_pools WHERE match_id = ?').get(matchId)?.id;
+  if (!poolId) throw new Error('Failed to create/find prize pool');
 
   // 7. Write prize distributions
   const insertPrize = db.prepare(`
-    INSERT OR IGNORE INTO prize_distributions
+    INSERT INTO prize_distributions
       (match_prize_pool_id, user_team_id, rank, gross_units, net_units, fantasy_points)
     VALUES (?, ?, ?, ?, ?, ?)
   `);
@@ -69,6 +70,8 @@ function finaliseMatch(matchId) {
   `);
 
   const doFinalise = db.transaction(() => {
+    // Clear existing distributions for this pool (re-finalise case)
+    db.prepare('DELETE FROM prize_distributions WHERE match_prize_pool_id = ?').run(poolId);
     for (const prize of prizes) {
       insertPrize.run(poolId, prize.userId, prize.rank, prize.grossUnits, prize.netUnits, prize.fantasyPoints);
       updateTeam.run(prize.rank, prize.grossUnits, prize.userId);

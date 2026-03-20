@@ -97,8 +97,7 @@ export default function LiveScorePage() {
 
   useEffect(() => {
     const compareTab = match?.status === 'completed' ? 3 : 2;
-    if (tab === compareTab && compareA && compareB && compareA !== compareB && !inlineCompare && !compareAutoLoaded) {
-      setCompareAutoLoaded(true);
+    if (tab === compareTab && compareA && compareB && compareA !== compareB) {
       loadInlineCompare(compareA, compareB);
     }
   }, [tab, compareA, compareB]);
@@ -320,16 +319,14 @@ export default function LiveScorePage() {
               </div>
             );
           })()}
-          {/* Rank trajectory chart */}
-          {snapshots.length > 0 && <RankChart series={snapshots} />}
+          {/* Rank trajectory chart — foldable */}
+          {snapshots.length > 0 && <Foldable title="Rank during match" defaultOpen={false}><RankChart series={snapshots} /></Foldable>}
 
           {/* Prize pool card */}
           {leaderboard.length >= 2 && (
-            <div className="ls-prize-card">
-              <div className="ls-prize-header">
-                <span className="ls-prize-title">Prize Pool</span>
-                <span className="ls-prize-total">{totalPool} units · {leaderboard.length} players</span>
-              </div>
+            <Foldable title={`Prize Pool · ${totalPool}u · ${leaderboard.length} players`} defaultOpen={false}>
+            <div className="ls-prize-card" style={{border:'none',borderRadius:0,margin:0}}>
+              <div style={{display:'none'}}>
               {prizeData.filter(e => e.isWinner).map((e, i) => (
                 <div key={e.user_id} className="ls-prize-row ls-prize-winner">
                   <span className="ls-prize-pos">{i===0?'🥇':i===1?'🥈':'🥉'}</span>
@@ -347,6 +344,7 @@ export default function LiveScorePage() {
                 <span className="ls-prize-net ls-net-loss">−{entryUnits}</span>
               </div>
             </div>
+            </Foldable>
           )}
 
           {leaderboard.length === 0
@@ -379,11 +377,16 @@ export default function LiveScorePage() {
                 if (scoreboards.length === 0) scoreboards.push(null);
 
                 return scoreboards.map((sb, sbIdx) => {
-                  const sbScores = sb ? scores.filter(s => s.scoreboard === sb) : scores;
-                  // Batting team = players with runs/balls data
-                  const batters = sbScores.filter(s => s.balls_faced > 0 || (s.runs > 0 && !s.overs_bowled)).sort((a,b) => (a.sort_order||99)-(b.sort_order||99));
-                  // Bowling team = players with overs data
-                  const bowlers = sbScores.filter(s => s.overs_bowled > 0).sort((a,b) => (b.wickets||0)-(a.wickets||0));
+                  // S1 = 1st innings batting, S2 = 2nd innings batting
+                  // Batters in this innings have scoreboard === sb
+                  // Bowlers in this innings have scoreboard === sb (they bowl when the other team bats)
+                  // But bowlers' scoreboard field = the innings they BOWLED in
+                  // So: S1 batters bat in S1, S1 bowlers bowl against S1 batters
+                  const sbBatters = sb ? scores.filter(s => s.scoreboard === sb && (s.balls_faced > 0 || s.dismissal_type !== 'dnb')) : scores.filter(s => s.balls_faced > 0);
+                  const sbBowlers = sb ? scores.filter(s => s.scoreboard === sb && s.overs_bowled > 0) : scores.filter(s => s.overs_bowled > 0);
+
+                  const batters = sbBatters.sort((a,b) => (a.sort_order||99)-(b.sort_order||99));
+                  const bowlers = sbBowlers.sort((a,b) => (b.wickets||0)-(a.wickets||0));
 
                   // Get batting team name from first batter's team
                   const battingTeam = batters[0]?.team || '';
@@ -634,6 +637,19 @@ function ResultTab({ result }) {
   );
 }
 
+function Foldable({ title, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:10,marginBottom:12,overflow:'hidden'}}>
+      <div onClick={() => setOpen(o => !o)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',cursor:'pointer',userSelect:'none'}}>
+        <span style={{fontSize:'0.72rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',color:'var(--text-muted)'}}>{title}</span>
+        <span style={{color:'var(--text-muted)',fontSize:'0.8rem',transform:open?'rotate(180deg)':'none',transition:'transform 0.2s'}}>▾</span>
+      </div>
+      {open && <div style={{borderTop:'0.5px solid var(--border)'}}>{children}</div>}
+    </div>
+  );
+}
+
 function InlineCompare({ data }) {
   const A = data.teamA;
   const B = data.teamB;
@@ -720,91 +736,79 @@ function InlineCompare({ data }) {
 }
 
 function RankChart({ series }) {
-  const colors = ['#00e5ff','#a78bfa','#fb923c','#4ade80','#f472b6','#facc15','#60a5fa','#34d399','#f87171'];
+  const colors = ['#00e5ff','#a78bfa','#fb923c','#4ade80','#f472b6','#facc15','#60a5fa'];
   const allOvers = [...new Set(series.flatMap(s => s.data.map(d => d.over)))].sort((a,b)=>a-b);
   const maxRank = Math.max(...series.flatMap(s => s.data.map(d => d.rank)));
   const maxOver = allOvers[allOvers.length-1] || 20;
-  const W = 340, H = 130, PL = 28, PR = 8, PT = 10, PB = 22;
+  const W = 300, H = 140, PL = 24, PR = 50, PT = 8, PB = 18;
   const cW = W - PL - PR, cH = H - PT - PB;
-
-  // Map over value to x position (continuous scale)
-  const x = o => PL + (maxOver > 0 ? (o / maxOver) * cW : cW/2);
+  const x = o => PL + (maxOver > 0 ? (o / maxOver) * cW : 0);
   const y = r => PT + ((r-1) / Math.max(maxRank-1,1)) * cH;
+  const inningsBreakOver = maxOver > 22 ? 20 : null;
 
-  // Detect innings break — where over resets or jumps > 5
-  const inningsBreakOver = (() => {
-    for (let i = 1; i < allOvers.length; i++) {
-      if (allOvers[i] - allOvers[i-1] > 3 && allOvers[i-1] >= 15) return allOvers[i-1];
-    }
-    // Fallback: if maxOver > 20, first innings was 20 overs
-    return maxOver > 22 ? 20 : null;
-  })();
-
-  // Detect injection points — rank drop of 2+ within one step
+  // Only mark injections where rank drops 2+ places in one step
   const injections = [];
   series.forEach((s, si) => {
     for (let i = 1; i < s.data.length; i++) {
-      const drop = s.data[i].rank - s.data[i-1].rank;
-      if (drop >= 2) injections.push({ over: s.data[i].over, rank: s.data[i].rank, name: s.name, color: colors[si%colors.length] });
+      if (s.data[i].rank - s.data[i-1].rank >= 2) {
+        injections.push({ over: s.data[i].over, rank: s.data[i].rank, color: colors[si % colors.length] });
+      }
     }
   });
 
   return (
-    <div style={{background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 12px',marginBottom:12}}>
-      <div style={{fontSize:'0.65rem',textTransform:'uppercase',letterSpacing:'0.05em',color:'var(--text-muted)',marginBottom:6}}>Rank during match</div>
+    <div style={{padding:'10px 12px'}}>
       <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',overflow:'visible'}}>
-        {/* Y axis labels */}
+        {/* Rank grid */}
         {Array.from({length:maxRank},(_,i)=>i+1).map(r=>(
-          <text key={r} x={PL-4} y={y(r)+4} textAnchor="end" fontSize="9" fill="var(--text-muted)">#{r}</text>
+          <g key={r}>
+            <line x1={PL} y1={y(r)} x2={W-PR} y2={y(r)} stroke="rgba(255,255,255,0.06)" strokeWidth="0.5"/>
+            <text x={PL-4} y={y(r)+3.5} textAnchor="end" fontSize="9" fill="rgba(255,255,255,0.3)">#{r}</text>
+          </g>
         ))}
-        {/* Grid lines */}
-        {Array.from({length:maxRank},(_,i)=>i+1).map(r=>(
-          <line key={r} x1={PL} y1={y(r)} x2={W-PR} y2={y(r)} stroke="var(--border)" strokeWidth="0.5"/>
-        ))}
-        {/* Innings break vertical line */}
+        {/* Innings break */}
         {inningsBreakOver && (
-          <>
-            <line x1={x(inningsBreakOver)} y1={PT} x2={x(inningsBreakOver)} y2={H-PB} stroke="rgba(255,255,255,0.2)" strokeWidth="1" strokeDasharray="3,3"/>
-            <text x={x(inningsBreakOver)+3} y={PT+8} fontSize="8" fill="rgba(255,255,255,0.3)">innings</text>
-          </>
+          <line x1={x(inningsBreakOver)} y1={PT} x2={x(inningsBreakOver)} y2={H-PB}
+            stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="4,3"/>
         )}
-        {/* Lines per user */}
+        {/* User lines - smooth step */}
         {series.map((s,si) => {
-          const pts = s.data.map(d => `${x(d.over)},${y(d.rank)}`).join(' ');
+          const col = colors[si%colors.length];
+          const d = s.data;
+          if (d.length < 2) return null;
+          // Build path
+          let path = `M ${x(d[0].over)} ${y(d[0].rank)}`;
+          for (let i = 1; i < d.length; i++) {
+            path += ` L ${x(d[i].over)} ${y(d[i-1].rank)} L ${x(d[i].over)} ${y(d[i].rank)}`;
+          }
+          const last = d[d.length-1];
+          const shortName = s.name.split(' ')[0];
           return (
             <g key={s.name}>
-              <polyline points={pts} fill="none" stroke={colors[si%colors.length]} strokeWidth="1.5" strokeLinejoin="round"/>
-              {/* Name label at end */}
-              {s.data.length > 0 && (
-                <text x={x(s.data[s.data.length-1].over)+4} y={y(s.data[s.data.length-1].rank)+4}
-                  fontSize="8" fill={colors[si%colors.length]}>{s.name.split(' ')[0]}</text>
-              )}
+              <path d={path} fill="none" stroke={col} strokeWidth="1.5" strokeLinejoin="round"/>
+              <text x={x(last.over)+6} y={y(last.rank)+4} fontSize="10" fill={col} fontWeight="500">{shortName}</text>
             </g>
           );
         })}
-        {/* Injection markers */}
+        {/* Injection dots */}
         {injections.map((inj,i) => (
-          <g key={i}>
-            <circle cx={x(inj.over)} cy={y(inj.rank)} r="4" fill="#f87171" opacity="0.8"/>
-            <text x={x(inj.over)} y={y(inj.rank)-6} textAnchor="middle" fontSize="8" fill="#f87171">↓</text>
-          </g>
+          <circle key={i} cx={x(inj.over)} cy={y(inj.rank)} r="4" fill="#f87171" opacity="0.9"/>
         ))}
-        {/* X axis labels */}
-        {[0,5,10,15,20,25,30,35].filter(o => o <= maxOver).map(o => (
-          <text key={o} x={x(o)} y={H} textAnchor="middle" fontSize="9" fill="var(--text-muted)">{o}</text>
+        {/* X axis */}
+        {[0,5,10,15,20,25,30,35].filter(o=>o<=maxOver).map(o=>(
+          <text key={o} x={x(o)} y={H} textAnchor="middle" fontSize="9" fill="rgba(255,255,255,0.3)">{o}</text>
         ))}
-        <text x={x(maxOver)} y={H} textAnchor="middle" fontSize="9" fill="var(--text-muted)">{Math.round(maxOver*10)/10}</text>
       </svg>
-      <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:4}}>
+      <div style={{display:'flex',flexWrap:'wrap',gap:10,marginTop:4,paddingLeft:24}}>
         {series.map((s,si) => (
           <div key={s.name} style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.65rem',color:'var(--text-muted)'}}>
-            <div style={{width:8,height:2,borderRadius:1,background:colors[si%colors.length],flexShrink:0}}/>
+            <div style={{width:10,height:2,background:colors[si%colors.length],borderRadius:1}}/>
             {s.name}
           </div>
         ))}
         {injections.length > 0 && (
           <div style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.65rem',color:'#f87171'}}>
-            <div style={{width:8,height:8,borderRadius:'50%',background:'#f87171',flexShrink:0}}/>
+            <div style={{width:8,height:8,borderRadius:'50%',background:'#f87171'}}/>
             injection
           </div>
         )}
