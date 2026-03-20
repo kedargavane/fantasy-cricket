@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { Chart, LineController, LineElement, PointElement, LinearScale, Tooltip, Filler, ScatterController } from 'chart.js';
+Chart.register(LineController, LineElement, PointElement, LinearScale, Tooltip, Filler, ScatterController);
 import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import api, { SOCKET_URL } from '../utils/api.js';
@@ -681,7 +683,9 @@ function Foldable({ title, children, defaultOpen = false }) {
         <span style={{fontSize:'0.72rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',color:'var(--text-muted)'}}>{title}</span>
         <span style={{color:'var(--text-muted)',fontSize:'0.8rem',transform:open?'rotate(180deg)':'none',transition:'transform 0.2s'}}>▾</span>
       </div>
-      {open && <div style={{borderTop:'0.5px solid var(--border)'}}>{children}</div>}
+      <div style={{borderTop: open ? '0.5px solid var(--border)' : 'none', display: open ? 'block' : 'none'}}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -772,7 +776,8 @@ function InlineCompare({ data }) {
 }
 
 function PointsChart({ series }) {
-  const canvasId = useRef('ptChart_' + Math.random().toString(36).slice(2,7)).current;
+  const canvasRef = useRef(null);
+  const chartRef  = useRef(null);
   const colors = ['#00e5ff','#a78bfa','#4ade80','#f472b6','#fb923c','#facc15','#60a5fa'];
   const maxOver = Math.max(...series.flatMap(s => s.data.map(d => d.over)));
 
@@ -798,11 +803,10 @@ function PointsChart({ series }) {
   });
 
   useEffect(() => {
-    
-    const canvas = document.getElementById(canvasId);
+    const canvas = canvasRef.current;
     if (!canvas) return;
-    const existing = Chart.getChart(canvas);
-    if (existing) existing.destroy();
+    try {
+    if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
 
     const labels = [];
     for (let o = 0; o <= maxOver; o += 1) labels.push(o);
@@ -833,7 +837,7 @@ function PointsChart({ series }) {
       });
     }
 
-    new Chart(canvas, {
+    chartRef.current = new Chart(canvas, {
       type: 'line',
       data: { datasets },
       options: {
@@ -892,10 +896,14 @@ function PointsChart({ series }) {
     });
   }, [series]);
 
+  useEffect(() => {
+    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
+  }, []);
+
   return (
     <div style={{padding:'10px 12px'}}>
       <div style={{position:'relative',width:'100%',height:200}}>
-        <canvas id={canvasId} />
+        <canvas ref={canvasRef} />
       </div>
       <div style={{display:'flex',flexWrap:'wrap',gap:10,marginTop:6}}>
         {series.map((s,si) => (
