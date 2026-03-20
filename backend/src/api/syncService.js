@@ -159,15 +159,31 @@ function upsertStats(matchId, playerStats) {
 
       // Create new player if still not found
       if (!player) {
-        upsertPlayer.run(
-          stat.name || `Player ${extId}`,
-          stat.team || '',
-          stat.role || 'batsman',
-          extId,
-          parseInt(extId) || null
-        );
-        player = getPlayerByExternal.get(extId);
-        if (!player) continue;
+        // Last resort: check match_squads for player with same name in this match
+        if (stat.name) {
+          const inSquad = db.prepare(`
+            SELECT p.id FROM players p
+            JOIN match_squads ms ON ms.player_id = p.id
+            WHERE ms.match_id = ? AND LOWER(p.name) = LOWER(?)
+          `).get(matchId, stat.name);
+          if (inSquad) {
+            // Update external_player_id to link scorecard → existing player
+            db.prepare('UPDATE players SET external_player_id = ?, sportmonks_player_id = ? WHERE id = ?')
+              .run(extId, parseInt(extId) || null, inSquad.id);
+            player = inSquad;
+          }
+        }
+        if (!player) {
+          upsertPlayer.run(
+            stat.name || `Player ${extId}`,
+            stat.team || '',
+            stat.role || 'batsman',
+            extId,
+            parseInt(extId) || null
+          );
+          player = getPlayerByExternal.get(extId);
+          if (!player) continue;
+        }
       }
 
       // Mark as playing XI
@@ -341,10 +357,12 @@ async function syncLiveMatch(matchId, sportmonksFixtureId) {
     recomputeTeamPoints(matchId);
 
     const newStatus = matchInfo.matchEnded ? 'completed' : 'live';
-    const scoreStr  = matchInfo.score.map(s => {
-      const teamName = s.teamName || (s.teamId === matchInfo.localTeamId ? matchInfo.teamA : matchInfo.teamB);
-      return `${teamName} ${s.r}/${s.w} (${s.o})`;
-    }).join(' | ');
+    // Store as JSON array for accurate frontend parsing
+    const scoreStr = JSON.stringify(matchInfo.score.map(s => ({
+      teamId:   s.teamId,
+      teamName: s.teamName || (s.teamId === matchInfo.localTeamId ? matchInfo.teamA : matchInfo.teamB),
+      r: s.r, w: s.w, o: s.o, inning: s.inning,
+    })));
 
     db.prepare(`
       UPDATE matches SET status = ?, last_synced = datetime('now'), live_score = ? WHERE id = ?

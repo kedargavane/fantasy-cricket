@@ -257,23 +257,28 @@ export default function LiveScorePage() {
       {/* Tab 0/1: Leaderboard */}
       {((match?.status === 'completed' && tab === 1) || (match?.status !== 'completed' && tab === 0)) && (
         <div className="ls-content">
-          {/* Match score summary — use live_score from match for accuracy */}
-          {match?.live_score && (
-            <div className="ls-match-summary">
-              {match.live_score.split(' | ').map((part, i) => {
-                // Parse "Team Name 167/9 (19)" format
-                const match2 = part.match(/^(.+?)\s+(\d+\/\d+)\s+\(([^)]+)\)$/);
-                if (!match2) return null;
-                const [, teamName, score, overs] = match2;
-                return (
+          {/* Match score summary — parse JSON live_score for accuracy */}
+          {match?.live_score && (() => {
+            let innings = [];
+            try { innings = JSON.parse(match.live_score); } catch {
+              // Legacy string format fallback
+              innings = (match.live_score.split(' | ')).map(part => {
+                const m2 = part.match(/^(.+?)\s+(\d+)\/(\d+)\s+\(([^)]+)\)$/);
+                return m2 ? { teamName: m2[1], r: m2[2], w: m2[3], o: m2[4] } : null;
+              }).filter(Boolean);
+            }
+            if (!innings.length) return null;
+            return (
+              <div className="ls-match-summary">
+                {innings.map((s, i) => (
                   <div key={i} className="ls-summary-team">
-                    <span className="ls-summary-name">{teamName.toUpperCase()}</span>
-                    <span className="ls-summary-score">{score} <span style={{fontSize:'0.75rem',color:'var(--color-text-secondary)'}}>({overs} ov)</span></span>
+                    <span className="ls-summary-name">{(s.teamName||'').toUpperCase()}</span>
+                    <span className="ls-summary-score">{s.r}/{s.w} <span style={{fontSize:'0.75rem',color:'var(--color-text-secondary)'}}>({s.o} ov)</span></span>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                ))}
+              </div>
+            );
+          })()}
           {/* Rank trajectory chart */}
           {/* RankChart hidden until data is available */}
 
@@ -330,16 +335,12 @@ export default function LiveScorePage() {
                     <span className="ls-innings-team">{team}</span>
                     <span className="ls-innings-score">
                       {(() => {
-                        // Match by full team name in live_score string
-                        const parts = match?.live_score?.split(' | ') || [];
-                        const part = parts.find(p => p.toLowerCase().startsWith(team.toLowerCase()));
-                        const m2 = part?.match(/(\d+\/\d+)\s+\(([^)]+)\)/);
-                        if (m2) return `${m2[1]} (${m2[2]} ov)`;
-                        // Fallback: use index based on innings order
-                        const idx = Object.keys(innings).indexOf(team);
-                        const fallback = parts[idx];
-                        const m3 = fallback?.match(/(\d+\/\d+)\s+\(([^)]+)\)/);
-                        return m3 ? `${m3[1]} (${m3[2]} ov)` : `${data.runs}/${data.wickets}`;
+                        try {
+                          const scoreData = JSON.parse(match?.live_score || '[]');
+                          const s = scoreData.find(x => (x.teamName||'').toLowerCase() === team.toLowerCase());
+                          if (s) return `${s.r}/${s.w} (${s.o} ov)`;
+                        } catch {}
+                        return `${data.runs}/${data.wickets}`;
                       })()}
                     </span>
                   </div>
@@ -568,7 +569,9 @@ function RankChart({ series }) {
 
 function PlayerRow({ player, pts, role, isBackup, isPlaying, swappedIn, swappedOut }) {
   const multi = role === 'captain' ? 2 : role === 'vice_captain' ? 1.5 : 1;
-  const total = pts !== undefined ? Math.round(pts * multi) : undefined;
+  // pts is base_fantasy_points, apply multiplier
+  const basePts = pts ?? player?.base_fantasy_points ?? player?.fantasy_points;
+  const total = basePts !== undefined && basePts !== null ? Math.round(basePts * multi) : undefined;
   return (
     <div className={`ls-player-row ${isBackup ? 'ls-backup' : ''} ${isPlaying === false || swappedOut ? 'ls-not-playing' : ''}`}>
       <div className="ls-player-left">

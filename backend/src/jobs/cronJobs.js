@@ -5,8 +5,10 @@ const { getDb }  = require('../db/database');
 const sportmonks = require('../api/sportmonks');
 const { syncLiveMatch, syncPlayingXi, upsertSquad } = require('../api/syncService');
 
-// In-memory ball count tracker to avoid redundant syncs
-const matchBallCount = new Map();
+// In-memory trackers
+const matchBallCount   = new Map();
+const matchLastStatus  = new Map(); // track innings changes for notifications
+const matchXiNotified  = new Set(); // track if XI notification sent
 
 function oversToTotalBalls(overs) {
   if (!overs) return 0;
@@ -34,6 +36,39 @@ function startCronJobs(io) {
         // Count total balls from score
         const currentBalls = info.score.reduce((sum, s) => sum + oversToTotalBalls(s.overs), 0);
         const lastBalls    = matchBallCount.get(match.id) ?? -1;
+
+        // ── Innings break notification ──────────────────────────────────────
+        const lastStatus = matchLastStatus.get(match.id);
+        if (lastStatus && lastStatus !== info.status) {
+          if (info.status === 'Innings Break' || info.status === 'Lunch' || info.status === 'Tea') {
+            try {
+              const db2 = getDb();
+              const matchRow = db2.prepare('SELECT team_a, team_b, season_id, live_score FROM matches WHERE id = ?').get(match.id);
+              let scoreText = '';
+              try { 
+                const scores = JSON.parse(matchRow?.live_score || '[]');
+                scoreText = scores.map(s => `${s.teamName} ${s.r}/${s.w} (${s.o})`).join(' | ');
+              } catch { scoreText = matchRow?.live_score || ''; }
+              
+              const webpush = require('web-push');
+              const subs = db2.prepare(`
+                SELECT ps.endpoint, ps.p256dh, ps.auth FROM push_subscriptions ps
+                JOIN season_memberships sm ON sm.user_id = ps.user_id
+                WHERE sm.season_id = ?
+              `).all(matchRow.season_id);
+              
+              const payload = JSON.stringify({
+                title: `🏏 Innings Break — ${matchRow.team_a} vs ${matchRow.team_b}`,
+                body: scoreText || 'Innings over! Check the leaderboard.',
+              });
+              for (const sub of subs) {
+                webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload).catch(() => {});
+              }
+              console.log(`[notify] Innings break for match ${match.id}: ${subs.length} users`);
+            } catch (e) { console.error('[notify] innings break error:', e.message); }
+          }
+        }
+        matchLastStatus.set(match.id, info.status);
 
         if (info.status === 'Finished' || info.status === 'Aban.') {
           console.log(`[livePoller] Match ${match.id} ended, final sync...`);
@@ -142,6 +177,30 @@ function startCronJobs(io) {
         if (result.confirmed && result.count > 0) {
           console.log(`[xiPoller] Match ${match.id}: XI confirmed (${result.count} players)`);
           io.to(`match:${match.id}`).emit('xiConfirmed', { matchId: match.id });
+          
+          // Send XI notification if not already sent
+          if (!matchXiNotified.has(match.id)) {
+            matchXiNotified.add(match.id);
+            try {
+              const webpush = require('web-push');
+              const db2 = getDb();
+              const matchRow = db2.prepare('SELECT team_a, team_b, season_id, start_time FROM matches WHERE id = ?').get(match.id);
+              const subs = db2.prepare(`
+                SELECT ps.endpoint, ps.p256dh, ps.auth FROM push_subscriptions ps
+                JOIN season_memberships sm ON sm.user_id = ps.user_id
+                WHERE sm.season_id = ?
+              `).all(matchRow.season_id);
+              const startTime = new Date(matchRow.start_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+              const payload = JSON.stringify({
+                title: `🏏 Playing XI Announced!`,
+                body: `${matchRow.team_a} vs ${matchRow.team_b} — Update your team before ${startTime} IST`,
+              });
+              for (const sub of subs) {
+                webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload).catch(() => {});
+              }
+              console.log(`[notify] XI confirmed for match ${match.id}: ${subs.length} users`);
+            } catch (e) { console.error('[notify] XI error:', e.message); }
+          }
         }
       } catch (err) {
         console.error(`[xiPoller] match ${match.id} error:`, err.message);
