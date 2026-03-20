@@ -268,13 +268,28 @@ async function fetchLivescores() {
 
 // ── Fetch fixture basic info (for status check) ───────────────────────────────
 async function fetchFixtureInfo(fixtureId) {
-  const data = await smGet(`fixtures/${fixtureId}`, { include: 'runs' });
+  const data = await smGet(`fixtures/${fixtureId}`, { include: 'runs,localteam,visitorteam' });
   const f = data.data || {};
+  // A match is truly finished when status=Finished AND there's a winner or draw/no-result
+  const trulyFinished = f.status === 'Finished' &&
+    (f.winner_team_id !== null || f.draw_noresult === true || f.status === 'Aban.');
+  // Build toss info string
+  let tossInfo = null;
+  if (f.toss_won_team_id) {
+    const tossTeam = f.toss_won_team_id === f.localteam_id ? f.localteam?.name : f.visitorteam?.name;
+    tossInfo = tossTeam ? `${tossTeam} won toss · elected to ${f.elected || 'bat'}` : null;
+  }
+
   return {
     sportmonksFixtureId: f.id,
-    status:   f.status,
-    live:     f.live,
-    score:    f.runs || [],
+    status:        f.status,
+    live:          f.live,
+    score:         f.runs || [],
+    winnerTeamId:  f.winner_team_id || null,
+    note:          f.note || '',
+    drawNoresult:  f.draw_noresult || false,
+    tossInfo,
+    trulyFinished,
   };
 }
 

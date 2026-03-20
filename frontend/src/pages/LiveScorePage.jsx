@@ -231,6 +231,9 @@ export default function LiveScorePage() {
         <button className="ls-back" onClick={() => navigate('/')}>‹</button>
         <div className="ls-header-info">
           <span className="ls-header-title">{match?.team_a} vs {match?.team_b}</span>
+          {match?.toss_info && (
+            <span style={{fontSize:'0.65rem',color:'var(--text-muted)',marginTop:1}}>{match.toss_info}</span>
+          )}
           <span className="ls-header-sub">
             {match?.status === 'live' && <span className="ls-live-dot">● </span>}
             {match?.status === 'live' ? 'Live' : match?.status}
@@ -280,7 +283,7 @@ export default function LiveScorePage() {
             );
           })()}
           {/* Rank trajectory chart */}
-          {/* RankChart hidden until data is available */}
+          {snapshots.length > 0 && <RankChart series={snapshots} />}
 
           {/* Prize pool card */}
           {leaderboard.length >= 2 && (
@@ -573,10 +576,31 @@ function RankChart({ series }) {
   const colors = ['#00e5ff','#a78bfa','#fb923c','#4ade80','#f472b6','#facc15','#60a5fa','#34d399','#f87171'];
   const allOvers = [...new Set(series.flatMap(s => s.data.map(d => d.over)))].sort((a,b)=>a-b);
   const maxRank = Math.max(...series.flatMap(s => s.data.map(d => d.rank)));
-  const W = 340, H = 120, PL = 28, PR = 8, PT = 8, PB = 20;
+  const maxOver = allOvers[allOvers.length-1] || 20;
+  const W = 340, H = 130, PL = 28, PR = 8, PT = 10, PB = 22;
   const cW = W - PL - PR, cH = H - PT - PB;
-  const x = o => PL + (allOvers.length < 2 ? cW/2 : (allOvers.indexOf(o) / (allOvers.length-1)) * cW);
+
+  // Map over value to x position (continuous scale)
+  const x = o => PL + (maxOver > 0 ? (o / maxOver) * cW : cW/2);
   const y = r => PT + ((r-1) / Math.max(maxRank-1,1)) * cH;
+
+  // Detect innings break — where over resets or jumps > 5
+  const inningsBreakOver = (() => {
+    for (let i = 1; i < allOvers.length; i++) {
+      if (allOvers[i] - allOvers[i-1] > 3 && allOvers[i-1] >= 15) return allOvers[i-1];
+    }
+    // Fallback: if maxOver > 20, first innings was 20 overs
+    return maxOver > 22 ? 20 : null;
+  })();
+
+  // Detect injection points — rank drop of 2+ within one step
+  const injections = [];
+  series.forEach((s, si) => {
+    for (let i = 1; i < s.data.length; i++) {
+      const drop = s.data[i].rank - s.data[i-1].rank;
+      if (drop >= 2) injections.push({ over: s.data[i].over, rank: s.data[i].rank, name: s.name, color: colors[si%colors.length] });
+    }
+  });
 
   return (
     <div style={{background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 12px',marginBottom:12}}>
@@ -590,30 +614,53 @@ function RankChart({ series }) {
         {Array.from({length:maxRank},(_,i)=>i+1).map(r=>(
           <line key={r} x1={PL} y1={y(r)} x2={W-PR} y2={y(r)} stroke="var(--border)" strokeWidth="0.5"/>
         ))}
+        {/* Innings break vertical line */}
+        {inningsBreakOver && (
+          <>
+            <line x1={x(inningsBreakOver)} y1={PT} x2={x(inningsBreakOver)} y2={H-PB} stroke="rgba(255,255,255,0.2)" strokeWidth="1" strokeDasharray="3,3"/>
+            <text x={x(inningsBreakOver)+3} y={PT+8} fontSize="8" fill="rgba(255,255,255,0.3)">innings</text>
+          </>
+        )}
         {/* Lines per user */}
         {series.map((s,si) => {
           const pts = s.data.map(d => `${x(d.over)},${y(d.rank)}`).join(' ');
           return (
             <g key={s.name}>
-              <polyline points={pts} fill="none" stroke={colors[si%colors.length]} strokeWidth="2" strokeLinejoin="round"/>
-              {s.data.map((d,di) => (
-                <circle key={di} cx={x(d.over)} cy={y(d.rank)} r="2.5" fill={colors[si%colors.length]}/>
-              ))}
+              <polyline points={pts} fill="none" stroke={colors[si%colors.length]} strokeWidth="1.5" strokeLinejoin="round"/>
+              {/* Name label at end */}
+              {s.data.length > 0 && (
+                <text x={x(s.data[s.data.length-1].over)+4} y={y(s.data[s.data.length-1].rank)+4}
+                  fontSize="8" fill={colors[si%colors.length]}>{s.name.split(' ')[0]}</text>
+              )}
             </g>
           );
         })}
-        {/* X axis labels - show every 5 overs */}
-        {allOvers.filter(o => o % 5 === 0).map(o => (
-          <text key={o} x={x(o)} y={H} textAnchor="middle" fontSize="9" fill="var(--text-muted)">{o}ov</text>
+        {/* Injection markers */}
+        {injections.map((inj,i) => (
+          <g key={i}>
+            <circle cx={x(inj.over)} cy={y(inj.rank)} r="4" fill="#f87171" opacity="0.8"/>
+            <text x={x(inj.over)} y={y(inj.rank)-6} textAnchor="middle" fontSize="8" fill="#f87171">↓</text>
+          </g>
         ))}
+        {/* X axis labels */}
+        {[0,5,10,15,20,25,30,35].filter(o => o <= maxOver).map(o => (
+          <text key={o} x={x(o)} y={H} textAnchor="middle" fontSize="9" fill="var(--text-muted)">{o}</text>
+        ))}
+        <text x={x(maxOver)} y={H} textAnchor="middle" fontSize="9" fill="var(--text-muted)">{Math.round(maxOver*10)/10}</text>
       </svg>
-      <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:6}}>
+      <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:4}}>
         {series.map((s,si) => (
           <div key={s.name} style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.65rem',color:'var(--text-muted)'}}>
-            <div style={{width:8,height:8,borderRadius:'50%',background:colors[si%colors.length],flexShrink:0}}/>
+            <div style={{width:8,height:2,borderRadius:1,background:colors[si%colors.length],flexShrink:0}}/>
             {s.name}
           </div>
         ))}
+        {injections.length > 0 && (
+          <div style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.65rem',color:'#f87171'}}>
+            <div style={{width:8,height:8,borderRadius:'50%',background:'#f87171',flexShrink:0}}/>
+            injection
+          </div>
+        )}
       </div>
     </div>
   );

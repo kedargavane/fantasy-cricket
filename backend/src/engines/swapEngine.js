@@ -31,9 +31,8 @@ function resolveTeam(userTeam, playingXiIds) {
   if (mainPlayers.length !== 11) {
     throw new Error('resolveTeam: expected 11 main players, got ' + mainPlayers.length);
   }
-  if (backups.length !== 2) {
-    throw new Error('resolveTeam: expected 2 backups, got ' + backups.length);
-  }
+  // Backups are optional — pad with empty array if missing
+  while (backups.length < 2) backups.push({ id: -1, name: 'No backup' });
 
   const finalTeam          = [...mainPlayers];
   let   finalCaptainId     = captainId;

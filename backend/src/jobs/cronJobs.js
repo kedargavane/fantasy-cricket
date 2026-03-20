@@ -70,8 +70,8 @@ function startCronJobs(io) {
         }
         matchLastStatus.set(match.id, info.status);
 
-        if (info.status === 'Finished' || info.status === 'Aban.') {
-          console.log(`[livePoller] Match ${match.id} ended, final sync...`);
+        if (info.trulyFinished) {
+          console.log(`[livePoller] Match ${match.id} truly finished (${info.note}), final sync...`);
           const result = await syncLiveMatch(match.id, match.sportmonks_fixture_id);
           if (result.success) {
             matchBallCount.delete(match.id);
@@ -80,8 +80,22 @@ function startCronJobs(io) {
               timestamp: new Date().toISOString(),
             });
             io.to(`match:${match.id}`).emit('matchCompleted', { matchId: match.id });
+
+            // Auto-finalise
+            try {
+              const { finaliseMatch } = require('../api/matchService');
+              finaliseMatch(match.id);
+              console.log(`[livePoller] Match ${match.id} auto-finalised`);
+            } catch (e) {
+              console.error(`[livePoller] Auto-finalise failed for match ${match.id}:`, e.message);
+            }
           }
           continue;
+        }
+
+        // Store toss info if available
+        if (info.tossInfo) {
+          db.prepare('UPDATE matches SET toss_info = ? WHERE id = ?').run(info.tossInfo, match.id);
         }
 
         if (currentBalls > lastBalls) {

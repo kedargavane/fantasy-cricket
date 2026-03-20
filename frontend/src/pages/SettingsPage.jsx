@@ -46,8 +46,23 @@ export default function SettingsPage() {
     } finally { setSaving(false); }
   }
 
+  const [pushStatus, setPushStatus] = useState('unknown'); // 'unknown' | 'enabled' | 'denied' | 'unsupported'
+
+  useState(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setPushStatus('unsupported'); return;
+    }
+    Notification.requestPermission().then(() => {});
+    navigator.serviceWorker.ready.then(reg => {
+      reg.pushManager.getSubscription().then(sub => {
+        setPushStatus(sub ? 'enabled' : Notification.permission === 'denied' ? 'denied' : 'disabled');
+      });
+    });
+  }, []);
+
   async function subscribePush() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setPushStatus('unsupported');
       return flash('error', 'Push notifications not supported on this device');
     }
     try {
@@ -62,7 +77,8 @@ export default function SettingsPage() {
         keys: { p256dh: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('p256dh')))), auth: btoa(String.fromCharCode(...new Uint8Array(sub.getKey('auth')))) },
         userAgent: navigator.userAgent,
       });
-      flash('success', 'Push notifications enabled');
+      setPushStatus('enabled');
+      flash('success', 'Push notifications enabled!');
     } catch (err) {
       flash('error', 'Could not enable notifications: ' + err.message);
     }
@@ -149,13 +165,40 @@ export default function SettingsPage() {
         <section className="settings-section fade-up">
           <h2 className="settings-section-title">Notifications</h2>
           <div className="card">
-            <p className="text-secondary text-sm mb-4">
-              Get notified 1 hour before a match, and when results are in.
-              {' '}On iOS, add this app to your Home Screen first.
-            </p>
-            <button className="btn btn-secondary btn-full" onClick={subscribePush}>
-              Enable Push Notifications
-            </button>
+            {pushStatus === 'enabled' ? (
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+                <span style={{width:8,height:8,borderRadius:'50%',background:'var(--accent-green)',flexShrink:0}} />
+                <span className="text-sm" style={{color:'var(--accent-green)',fontWeight:600}}>Notifications enabled</span>
+              </div>
+            ) : pushStatus === 'denied' ? (
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+                <span style={{width:8,height:8,borderRadius:'50%',background:'#f87171',flexShrink:0}} />
+                <span className="text-sm" style={{color:'#f87171'}}>Blocked — enable in browser settings</span>
+              </div>
+            ) : pushStatus === 'unsupported' ? (
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+                <span style={{width:8,height:8,borderRadius:'50%',background:'var(--text-muted)',flexShrink:0}} />
+                <span className="text-sm text-secondary">Not supported on this browser</span>
+              </div>
+            ) : null}
+            <div className="text-secondary text-sm mb-4">
+              <div style={{fontWeight:500,color:'var(--text-primary)',marginBottom:6}}>You'll get notified when:</div>
+              {[
+                '🏏 Playing XI is announced — update your team before lockout',
+                '🔔 Innings break — live leaderboard update',
+                '🏆 Match finalised — your result and prize',
+              ].map((item, i) => (
+                <div key={i} style={{padding:'4px 0',borderBottom:'0.5px solid var(--border)',fontSize:'0.8rem'}}>{item}</div>
+              ))}
+              <div style={{marginTop:8,fontSize:'0.75rem',color:'var(--text-muted)'}}>
+                On iPhone: add to Home Screen from Safari share menu first.
+              </div>
+            </div>
+            {pushStatus !== 'enabled' && pushStatus !== 'unsupported' && (
+              <button className="btn btn-secondary btn-full" onClick={subscribePush}>
+                Enable Push Notifications
+              </button>
+            )}
           </div>
         </section>
 
