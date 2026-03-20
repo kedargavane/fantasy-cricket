@@ -321,8 +321,8 @@ export default function LiveScorePage() {
           })()}
           {/* Rank trajectory chart — foldable */}
           {snapshots.length > 0 && (
-            <Foldable title="Rank during match" defaultOpen={false}>
-              <RankChart series={snapshots} />
+            <Foldable title="Points during match" defaultOpen={false}>
+              <PointsChart series={snapshots} />
             </Foldable>
           )}
 
@@ -517,31 +517,34 @@ export default function LiveScorePage() {
             ? <div className="ls-empty">No player scores yet</div>
             : [...scores].sort((a,b) => (b.fantasy_points||0) - (a.fantasy_points||0)).map(p => (
                 <div key={p.player_id} style={{
-                  display:'flex',alignItems:'center',gap:10,padding:'10px 14px',
+                  padding:'10px 14px',
                   borderBottom:'0.5px solid var(--border)'
                 }}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:'flex',alignItems:'center',gap:5}}>
-                      {p.is_playing_xi ? <span style={{width:6,height:6,borderRadius:'50%',background:'#00E5FF',flexShrink:0}} /> : null}
-                      <span style={{fontSize:'0.875rem',fontWeight:500}}>{p.name}</span>
+                  <div style={{display:'flex',alignItems:'center',gap:10}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:5}}>
+                        {p.is_playing_xi ? <span style={{width:6,height:6,borderRadius:'50%',background:'#00E5FF',flexShrink:0}} /> : null}
+                        <span style={{fontSize:'0.875rem',fontWeight:500}}>{p.name}</span>
+                      </div>
+                      <div style={{fontSize:'0.7rem',color:'var(--text-muted)',marginTop:2}}>
+                        {p.team?.split(' ').slice(0,2).join(' ')} · {p.role?.slice(0,3)}
+                        {' · '}
+                        {[
+                          p.runs > 0 && `${p.runs}r`,
+                          p.wickets > 0 && `${p.wickets}w`,
+                          p.catches > 0 && `${p.catches}ct`,
+                          p.stumpings > 0 && `${p.stumpings}st`,
+                          p.overs_bowled > 0 && !p.wickets && `${p.overs_bowled}ov`,
+                        ].filter(Boolean).join(' · ') || (p.is_playing_xi ? 'XI' : 'DNB')}
+                      </div>
+                      <BreakdownRow breakdown={p.breakdown} />
                     </div>
-                    <div style={{fontSize:'0.7rem',color:'var(--text-muted)',marginTop:2}}>
-                      {p.team?.split(' ').slice(0,2).join(' ')} · {p.role?.slice(0,3)}
-                      {' · '}
-                      {[
-                        p.runs > 0 && `${p.runs}r`,
-                        p.wickets > 0 && `${p.wickets}w`,
-                        p.catches > 0 && `${p.catches}ct`,
-                        p.stumpings > 0 && `${p.stumpings}st`,
-                        p.overs_bowled > 0 && !p.wickets && `${p.overs_bowled}ov`,
-                      ].filter(Boolean).join(' · ') || (p.is_playing_xi ? 'XI' : 'DNB')}
-                    </div>
+                    <span style={{
+                      fontFamily:'var(--font-mono)',fontSize:'0.9rem',fontWeight:700,
+                      color: p.fantasy_points > 0 ? 'var(--accent-primary)' : 'var(--text-muted)',
+                      flexShrink:0
+                    }}>{p.fantasy_points || 0}</span>
                   </div>
-                  <span style={{
-                    fontFamily:'var(--font-mono)',fontSize:'0.9rem',fontWeight:700,
-                    color: p.fantasy_points > 0 ? 'var(--accent-primary)' : 'var(--text-muted)',
-                    flexShrink:0
-                  }}>{p.fantasy_points || 0}</span>
                 </div>
               ))
           }
@@ -636,6 +639,35 @@ function ResultTab({ result }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function BreakdownRow({ breakdown, multiplier = 1 }) {
+  if (!breakdown || breakdown.notPlaying) return null;
+  const items = [
+    breakdown.playingXiBonus   && `XI +${breakdown.playingXiBonus}`,
+    breakdown.runs             && `${breakdown.runs/1}r +${breakdown.runs}`,
+    breakdown.boundaryBonus    && `4s +${breakdown.boundaryBonus}`,
+    breakdown.sixBonus         && `6s +${breakdown.sixBonus}`,
+    breakdown.halfCenturyBonus && `50 +${breakdown.halfCenturyBonus}`,
+    breakdown.centuryBonus     && `100 +${breakdown.centuryBonus}`,
+    breakdown.duckPenalty      && `duck ${breakdown.duckPenalty}`,
+    breakdown.strikeRatePoints && `SR ${breakdown.strikeRatePoints > 0 ? '+' : ''}${breakdown.strikeRatePoints}`,
+    breakdown.wicketPoints     && `${breakdown.wicketPoints/25}w +${breakdown.wicketPoints}`,
+    breakdown.wicketHaulBonus  && `haul +${breakdown.wicketHaulBonus}`,
+    breakdown.maidenPoints     && `maiden +${breakdown.maidenPoints}`,
+    breakdown.bowlerDismissalBonus && `lbw/b +${breakdown.bowlerDismissalBonus}`,
+    breakdown.economyPoints    && `eco ${breakdown.economyPoints > 0 ? '+' : ''}${breakdown.economyPoints}`,
+    breakdown.catchPoints      && `ct +${breakdown.catchPoints}`,
+    breakdown.stumpingPoints   && `st +${breakdown.stumpingPoints}`,
+    breakdown.runOutPoints     && `ro +${breakdown.runOutPoints}`,
+  ].filter(Boolean);
+  if (items.length === 0) return null;
+  const multLabel = multiplier === 2 ? ' × 2C' : multiplier === 1.5 ? ' × 1.5VC' : '';
+  return (
+    <div style={{fontSize:'0.68rem',color:'rgba(255,255,255,0.35)',marginTop:3,lineHeight:1.4}}>
+      {items.join(' · ')}{multLabel}
     </div>
   );
 }
@@ -738,80 +770,142 @@ function InlineCompare({ data }) {
   );
 }
 
-function RankChart({ series }) {
-  const colors = ['#00e5ff','#a78bfa','#fb923c','#4ade80','#f472b6','#facc15','#60a5fa'];
-  const allOvers = [...new Set(series.flatMap(s => s.data.map(d => d.over)))].sort((a,b)=>a-b);
-  const maxRank = Math.max(...series.flatMap(s => s.data.map(d => d.rank)));
-  const maxOver = allOvers[allOvers.length-1] || 20;
-  const W = 300, H = 140, PL = 24, PR = 50, PT = 8, PB = 18;
-  const cW = W - PL - PR, cH = H - PT - PB;
-  const x = o => PL + (maxOver > 0 ? (o / maxOver) * cW : 0);
-  const y = r => PT + ((r-1) / Math.max(maxRank-1,1)) * cH;
-  const inningsBreakOver = maxOver > 22 ? 20 : null;
+function PointsChart({ series }) {
+  const canvasId = 'ptChart_' + Math.random().toString(36).slice(2,7);
+  const colors = ['#00e5ff','#a78bfa','#4ade80','#f472b6','#fb923c','#facc15','#60a5fa'];
+  const maxOver = Math.max(...series.flatMap(s => s.data.map(d => d.over)));
 
-  // Only mark injections where rank drops 2+ places in one step
+  function interp(data, over) {
+    for (let i = 0; i < data.length - 1; i++) {
+      if (over >= data[i].over && over <= data[i+1].over) {
+        const t = (over - data[i].over) / (data[i+1].over - data[i].over);
+        return Math.round(data[i].pts + t * (data[i+1].pts - data[i].pts));
+      }
+    }
+    if (over <= data[0].over) return data[0].pts;
+    return data[data.length-1].pts;
+  }
+
+  // Injection detection — rank drops 2+ in one step
   const injections = [];
   series.forEach((s, si) => {
     for (let i = 1; i < s.data.length; i++) {
-      if (s.data[i].rank - s.data[i-1].rank >= 2) {
-        injections.push({ over: s.data[i].over, rank: s.data[i].rank, color: colors[si % colors.length] });
+      if ((s.data[i].rank - s.data[i-1].rank) >= 2) {
+        injections.push({ over: s.data[i].over, pts: s.data[i].pts, color: colors[si%colors.length] });
       }
     }
   });
 
+  useEffect(() => {
+    
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const existing = Chart.getChart(canvas);
+    if (existing) existing.destroy();
+
+    const labels = [];
+    for (let o = 0; o <= maxOver; o += 1) labels.push(o);
+    if (labels[labels.length-1] !== maxOver) labels.push(maxOver);
+
+    const datasets = series.map((s, si) => ({
+      label: s.name,
+      data: labels.map(o => ({ x: o, y: interp(s.data, o) })),
+      borderColor: colors[si % colors.length],
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      tension: 0.2,
+    }));
+
+    // Injection scatter points
+    if (injections.length > 0) {
+      datasets.push({
+        label: '_inj',
+        data: injections.map(inj => ({ x: inj.over, y: inj.pts })),
+        borderColor: 'transparent',
+        backgroundColor: '#f87171',
+        pointRadius: 6,
+        pointStyle: 'circle',
+        showLine: false,
+        type: 'scatter',
+      });
+    }
+
+    new Chart(canvas, {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        parsing: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            filter: i => i.dataset.label !== '_inj',
+            callbacks: {
+              title: ctx => `Over ${Math.round(ctx[0].parsed.x * 10)/10}`,
+              label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y}pts`,
+            },
+            backgroundColor: 'rgba(10,10,30,0.95)',
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderWidth: 1,
+            titleColor: 'rgba(255,255,255,0.5)',
+            bodyColor: '#fff',
+            padding: 8,
+          },
+        },
+        scales: {
+          x: {
+            type: 'linear', min: 0, max: maxOver,
+            ticks: { stepSize: 5, color: 'rgba(255,255,255,0.25)', font: { size: 10 }, callback: v => v % 5 === 0 ? v : '' },
+            grid: { color: 'rgba(255,255,255,0.04)' },
+            border: { color: 'rgba(255,255,255,0.08)' },
+          },
+          y: {
+            min: 0,
+            ticks: { stepSize: 100, color: 'rgba(255,255,255,0.25)', font: { size: 10 } },
+            grid: { color: 'rgba(255,255,255,0.04)' },
+            border: { color: 'rgba(255,255,255,0.08)' },
+          },
+        },
+      },
+      plugins: [{
+        id: 'inningsLine',
+        afterDraw(chart) {
+          if (maxOver <= 22) return;
+          const { ctx, scales } = chart;
+          const xp = scales.x.getPixelForValue(20);
+          ctx.save();
+          ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4,3]);
+          ctx.beginPath(); ctx.moveTo(xp, scales.y.top); ctx.lineTo(xp, scales.y.bottom); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = 'rgba(255,255,255,0.2)';
+          ctx.font = '9px sans-serif';
+          ctx.fillText('innings', xp+3, scales.y.top + 10);
+          ctx.restore();
+        }
+      }]
+    });
+  }, [series]);
+
   return (
     <div style={{padding:'10px 12px'}}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',overflow:'visible'}}>
-        {/* Rank grid */}
-        {Array.from({length:maxRank},(_,i)=>i+1).map(r=>(
-          <g key={r}>
-            <line x1={PL} y1={y(r)} x2={W-PR} y2={y(r)} stroke="rgba(255,255,255,0.06)" strokeWidth="0.5"/>
-            <text x={PL-4} y={y(r)+3.5} textAnchor="end" fontSize="9" fill="rgba(255,255,255,0.3)">#{r}</text>
-          </g>
-        ))}
-        {/* Innings break */}
-        {inningsBreakOver && (
-          <line x1={x(inningsBreakOver)} y1={PT} x2={x(inningsBreakOver)} y2={H-PB}
-            stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="4,3"/>
-        )}
-        {/* User lines - smooth step */}
-        {series.map((s,si) => {
-          const col = colors[si%colors.length];
-          const d = s.data;
-          if (d.length < 2) return null;
-          // Build path
-          let path = `M ${x(d[0].over)} ${y(d[0].rank)}`;
-          for (let i = 1; i < d.length; i++) {
-            path += ` L ${x(d[i].over)} ${y(d[i-1].rank)} L ${x(d[i].over)} ${y(d[i].rank)}`;
-          }
-          const last = d[d.length-1];
-          const shortName = s.name.split(' ')[0];
-          return (
-            <g key={s.name}>
-              <path d={path} fill="none" stroke={col} strokeWidth="1.5" strokeLinejoin="round"/>
-              <text x={x(last.over)+6} y={y(last.rank)+4} fontSize="10" fill={col} fontWeight="500">{shortName}</text>
-            </g>
-          );
-        })}
-        {/* Injection dots */}
-        {injections.map((inj,i) => (
-          <circle key={i} cx={x(inj.over)} cy={y(inj.rank)} r="4" fill="#f87171" opacity="0.9"/>
-        ))}
-        {/* X axis */}
-        {[0,5,10,15,20,25,30,35].filter(o=>o<=maxOver).map(o=>(
-          <text key={o} x={x(o)} y={H} textAnchor="middle" fontSize="9" fill="rgba(255,255,255,0.3)">{o}</text>
-        ))}
-      </svg>
-      <div style={{display:'flex',flexWrap:'wrap',gap:10,marginTop:4,paddingLeft:24}}>
+      <div style={{position:'relative',width:'100%',height:200}}>
+        <canvas id={canvasId} />
+      </div>
+      <div style={{display:'flex',flexWrap:'wrap',gap:10,marginTop:6}}>
         {series.map((s,si) => (
-          <div key={s.name} style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.65rem',color:'var(--text-muted)'}}>
+          <div key={s.name} style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.65rem',color:'rgba(255,255,255,0.4)'}}>
             <div style={{width:10,height:2,background:colors[si%colors.length],borderRadius:1}}/>
             {s.name}
           </div>
         ))}
         {injections.length > 0 && (
           <div style={{display:'flex',alignItems:'center',gap:4,fontSize:'0.65rem',color:'#f87171'}}>
-            <div style={{width:8,height:8,borderRadius:'50%',background:'#f87171'}}/>
+            <div style={{width:7,height:7,borderRadius:'50%',background:'#f87171'}}/>
             injection
           </div>
         )}
@@ -845,6 +939,7 @@ function PlayerRow({ player, pts, role, isBackup, isPlaying, swappedIn, swappedO
             {swappedOut ? ' · swapped out' : ''}
             {swappedIn ? ' · swapped in' : ''}
           </span>
+          <BreakdownRow breakdown={player.breakdown} multiplier={role==='captain'?2:role==='vice_captain'?1.5:1} />
         </div>
       </div>
       <span className={`ls-player-pts ${total > 0 ? 'ls-pts-active' : ''}`}>

@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const { calculateFantasyPoints, DEFAULT_SCORING_CONFIG } = require('../engines/scoringEngine');
 const { getDb }       = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
 
@@ -134,7 +135,27 @@ router.get('/:id/scores', requireAuth, (req, res) => {
     ORDER BY pms.scoreboard ASC, pms.sort_order ASC
   `).all(matchId);
 
-  return res.json({ match, scores, lastSynced: match.last_synced });
+  // Add scoring breakdown to each player
+  const scoresWithBreakdown = scores.map(s => {
+    const { breakdown } = calculateFantasyPoints({
+      isPlayingXi:   s.is_playing_xi,
+      runs:          s.runs,
+      ballsFaced:    s.balls_faced,
+      fours:         s.fours,
+      sixes:         s.sixes,
+      dismissalType: s.dismissal_type,
+      oversBowled:   s.overs_bowled,
+      wickets:       s.wickets,
+      runsConceded:  s.runs_conceded,
+      maidens:       s.maidens,
+      catches:       s.catches,
+      stumpings:     s.stumpings,
+      runOuts:       s.run_outs,
+    }, 'normal', DEFAULT_SCORING_CONFIG);
+    return { ...s, breakdown };
+  });
+
+  return res.json({ match, scores: scoresWithBreakdown, lastSynced: match.last_synced });
 });
 
 // ── GET /api/matches/:id/leaderboard ─────────────────────────────────────────

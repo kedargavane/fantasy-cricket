@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const { calculateFantasyPoints, DEFAULT_SCORING_CONFIG } = require('../engines/scoringEngine');
 const { getDb }       = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
 
@@ -255,7 +256,9 @@ function getTeamDetail(db, userTeamId, userId) {
       pms.runs, pms.balls_faced, pms.fours, pms.sixes,
       pms.overs_bowled, pms.wickets, pms.runs_conceded,
       pms.catches, pms.stumpings, pms.run_outs,
+      pms.maidens,
       pms.fantasy_points as base_fantasy_points,
+      pms.dismissal_type,
       ms.is_playing_xi,
       -- determine effective role
       CASE
@@ -284,7 +287,27 @@ function getTeamDetail(db, userTeamId, userId) {
     WHERE uts.user_team_id = ?
   `).all(userTeamId);
 
-  return { ...team, players, swaps };
+  // Add scoring breakdown to each player
+  const playersWithBreakdown = players.map(p => {
+    const { breakdown } = calculateFantasyPoints({
+      isPlayingXi:   p.is_playing_xi,
+      runs:          p.runs,
+      ballsFaced:    p.balls_faced,
+      fours:         p.fours,
+      sixes:         p.sixes,
+      dismissalType: p.dismissal_type,
+      oversBowled:   p.overs_bowled,
+      wickets:       p.wickets,
+      runsConceded:  p.runs_conceded,
+      maidens:       p.maidens,
+      catches:       p.catches,
+      stumpings:     p.stumpings,
+      runOuts:       p.run_outs,
+    }, 'normal', DEFAULT_SCORING_CONFIG);
+    return { ...p, breakdown };
+  });
+
+  return { ...team, players: playersWithBreakdown, swaps };
 }
 
 module.exports = router;
