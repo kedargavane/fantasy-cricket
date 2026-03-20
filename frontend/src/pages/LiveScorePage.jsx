@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Chart, LineController, LineElement, PointElement, LinearScale, Tooltip, Filler, ScatterController } from 'chart.js';
-Chart.register(LineController, LineElement, PointElement, LinearScale, Tooltip, Filler, ScatterController);
+
 import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import api, { SOCKET_URL } from '../utils/api.js';
@@ -792,7 +791,6 @@ function PointsChart({ series }) {
     return data[data.length-1].pts;
   }
 
-  // Injection detection — rank drops 2+ in one step
   const injections = [];
   series.forEach((s, si) => {
     for (let i = 1; i < s.data.length; i++) {
@@ -802,14 +800,13 @@ function PointsChart({ series }) {
     }
   });
 
-  useEffect(() => {
+  function buildChart() {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    try {
+    if (!canvas || !window.Chart) return;
     if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
 
     const labels = [];
-    for (let o = 0; o <= maxOver; o += 1) labels.push(o);
+    for (let o = 0; o <= maxOver; o++) labels.push(o);
     if (labels[labels.length-1] !== maxOver) labels.push(maxOver);
 
     const datasets = series.map((s, si) => ({
@@ -823,7 +820,6 @@ function PointsChart({ series }) {
       tension: 0.2,
     }));
 
-    // Injection scatter points
     if (injections.length > 0) {
       datasets.push({
         label: '_inj',
@@ -831,13 +827,12 @@ function PointsChart({ series }) {
         borderColor: 'transparent',
         backgroundColor: '#f87171',
         pointRadius: 6,
-        pointStyle: 'circle',
         showLine: false,
         type: 'scatter',
       });
     }
 
-    chartRef.current = new Chart(canvas, {
+    chartRef.current = new window.Chart(canvas, {
       type: 'line',
       data: { datasets },
       options: {
@@ -894,11 +889,19 @@ function PointsChart({ series }) {
         }
       }]
     });
-  }, [series]);
+  }
 
   useEffect(() => {
+    if (window.Chart) {
+      buildChart();
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
+      script.onload = buildChart;
+      document.head.appendChild(script);
+    }
     return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
-  }, []);
+  }, [series]);
 
   return (
     <div style={{padding:'10px 12px'}}>
