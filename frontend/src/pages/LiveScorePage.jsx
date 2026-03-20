@@ -320,30 +320,33 @@ export default function LiveScorePage() {
             );
           })()}
           {/* Rank trajectory chart — foldable */}
-          {snapshots.length > 0 && <Foldable title="Rank during match" defaultOpen={false}><RankChart series={snapshots} /></Foldable>}
+          {snapshots.length > 0 && (
+            <Foldable title="Rank during match" defaultOpen={false}>
+              <RankChart series={snapshots} />
+            </Foldable>
+          )}
 
-          {/* Prize pool card */}
+          {/* Prize pool card — foldable */}
           {leaderboard.length >= 2 && (
             <Foldable title={`Prize Pool · ${totalPool}u · ${leaderboard.length} players`} defaultOpen={false}>
-            <div className="ls-prize-card" style={{border:'none',borderRadius:0,margin:0}}>
-              <div style={{display:'none'}}>
-              {prizeData.filter(e => e.isWinner).map((e, i) => (
-                <div key={e.user_id} className="ls-prize-row ls-prize-winner">
-                  <span className="ls-prize-pos">{i===0?'🥇':i===1?'🥈':'🥉'}</span>
-                  <span className="ls-prize-name">{e.name}</span>
-                  <span className="ls-prize-share">{i===0?'50':i===1?'30':'20'}% · {e.gross}u</span>
-                  <span className="ls-prize-net ls-net-win">+{e.net}</span>
+              <div style={{padding:'0 0 4px'}}>
+                {prizeData.filter(e => e.isWinner).map((e, i) => (
+                  <div key={e.user_id} className="ls-prize-row ls-prize-winner">
+                    <span className="ls-prize-pos">{i===0?'🥇':i===1?'🥈':'🥉'}</span>
+                    <span className="ls-prize-name">{e.name}</span>
+                    <span className="ls-prize-share">{i===0?'50':i===1?'30':'20'}% · {e.gross}u</span>
+                    <span className="ls-prize-net ls-net-win">+{e.net}</span>
+                  </div>
+                ))}
+                <div className="ls-prize-row ls-prize-loser">
+                  <span className="ls-prize-pos" style={{fontSize:'0.7rem'}}>#{numWinners+1}–{leaderboard.length}</span>
+                  <span className="ls-prize-name" style={{color:'var(--color-text-secondary)',fontSize:'0.8rem'}}>
+                    {prizeData.filter(e => !e.isWinner).map(e => e.name.split(' ')[0]).join(', ')}
+                  </span>
+                  <span className="ls-prize-share"></span>
+                  <span className="ls-prize-net ls-net-loss">−{entryUnits}</span>
                 </div>
-              ))}
-              <div className="ls-prize-row ls-prize-loser">
-                <span className="ls-prize-pos" style={{fontSize:'0.7rem'}}>#{numWinners+1}–{leaderboard.length}</span>
-                <span className="ls-prize-name" style={{color:'var(--color-text-secondary)',fontSize:'0.8rem'}}>
-                  {prizeData.filter(e => !e.isWinner).map(e => e.name.split(' ')[0]).join(', ')}
-                </span>
-                <span className="ls-prize-share"></span>
-                <span className="ls-prize-net ls-net-loss">−{entryUnits}</span>
               </div>
-            </div>
             </Foldable>
           )}
 
