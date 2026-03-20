@@ -123,7 +123,7 @@ router.get('/:id/scores', requireAuth, (req, res) => {
       pms.overs_bowled, pms.wickets, pms.runs_conceded, pms.maidens,
       pms.catches, pms.stumpings, pms.run_outs,
       pms.fantasy_points,
-      pms.bowler_name, pms.catcher_name,
+      pms.bowler_name, pms.catcher_name, pms.runout_name,
       pms.scoreboard, pms.sort_order, pms.is_active,
       ms.is_playing_xi,
       pms.updated_at

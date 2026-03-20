@@ -127,10 +127,18 @@ async function fetchFixtureScorecard(fixtureId) {
     })),
   };
 
-  // Build player name lookup from lineup
+  // Build player name lookup from lineup + batting + bowling entries
   const lineupNames = {};
+  // From lineup (most complete)
   for (const p of (f.lineup || [])) {
     if (p.id) lineupNames[p.id] = p.fullname || `${p.firstname||''} ${p.lastname||''}`.trim();
+  }
+  // From batting entries (have player objects in some API versions)
+  for (const b of (f.batting || [])) {
+    if (b.player?.id) lineupNames[b.player.id] = b.player.fullname || '';
+    if (b.batsmanout?.id) lineupNames[b.batsmanout.id] = b.batsmanout.fullname || '';
+    if (b.bowler?.id) lineupNames[b.bowler.id] = b.bowler.fullname || '';
+    if (b.catchstump?.id) lineupNames[b.catchstump.id] = b.catchstump.fullname || '';
   }
 
   // Build player stats map keyed by sportmonks player_id

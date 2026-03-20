@@ -353,21 +353,31 @@ export default function LiveScorePage() {
                   const inningScore = liveScoreData.find(s => s.inning === inningNum);
                   const scoreText = inningScore ? `${inningScore.r}/${inningScore.w} (${inningScore.o} ov)` : '';
 
+                  function lastName(fullName) {
+                    if (!fullName) return '';
+                    return fullName.split(' ').pop();
+                  }
                   function dismissalText(p) {
-                    if (!p.dismissal_type || p.dismissal_type === 'dnb') return 'DNB';
-                    if (p.dismissal_type === 'notout') return p.is_active ? 'batting *' : 'not out *';
-                    if (p.dismissal_type === 'bowled') return p.bowler_name ? `b ${p.bowler_name.split(' ').pop()}` : 'bowled';
-                    if (p.dismissal_type === 'lbw')    return p.bowler_name ? `lbw b ${p.bowler_name.split(' ').pop()}` : 'lbw';
-                    if (p.dismissal_type === 'caught')  {
-                      const catcher = p.catcher_name ? p.catcher_name.split(' ').pop() : '';
-                      const bowler  = p.bowler_name  ? p.bowler_name.split(' ').pop()  : '';
-                      if (catcher && bowler) return `c ${catcher} b ${bowler}`;
-                      if (bowler) return `c&b ${bowler}`;
+                    const dt = p.dismissal_type;
+                    if (!dt || dt === 'dnb') return 'DNB';
+                    if (dt === 'notout') return 'not out *';
+                    if (dt === 'bowled') return p.bowler_name ? `b ${lastName(p.bowler_name)}` : 'bowled';
+                    if (dt === 'lbw')    return p.bowler_name ? `lbw b ${lastName(p.bowler_name)}` : 'lbw';
+                    if (dt === 'caught') {
+                      const c = lastName(p.catcher_name);
+                      const b = lastName(p.bowler_name);
+                      if (c && b && c !== b) return `c ${c} b ${b}`;
+                      if (b) return `c&b ${b}`;
+                      if (c) return `c ${c}`;
                       return 'caught';
                     }
-                    if (p.dismissal_type === 'runout')   return p.bowler_name ? `run out (${p.bowler_name.split(' ').pop()})` : 'run out';
-                    if (p.dismissal_type === 'stumped')  return p.catcher_name && p.bowler_name ? `st ${p.catcher_name.split(' ').pop()} b ${p.bowler_name.split(' ').pop()}` : 'stumped';
-                    return p.dismissal_type;
+                    if (dt === 'runout')  return p.runout_name ? `run out (${lastName(p.runout_name)})` : p.bowler_name ? `run out (${lastName(p.bowler_name)})` : 'run out';
+                    if (dt === 'stumped') {
+                      const wk = lastName(p.catcher_name);
+                      const b  = lastName(p.bowler_name);
+                      return wk && b ? `st ${wk} b ${b}` : 'stumped';
+                    }
+                    return dt;
                   }
 
                   return (

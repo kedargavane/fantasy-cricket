@@ -122,9 +122,9 @@ function upsertStats(matchId, playerStats) {
       (match_id, player_id, runs, balls_faced, fours, sixes, dismissal_type,
        overs_bowled, wickets, runs_conceded, maidens,
        catches, stumpings, run_outs, fantasy_points,
-       bowler_name, catcher_name, scoreboard, sort_order, is_active,
+       bowler_name, catcher_name, runout_name, scoreboard, sort_order, is_active,
        updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(match_id, player_id) DO UPDATE SET
       runs           = excluded.runs,
       balls_faced    = excluded.balls_faced,
@@ -141,6 +141,7 @@ function upsertStats(matchId, playerStats) {
       fantasy_points = excluded.fantasy_points,
       bowler_name    = excluded.bowler_name,
       catcher_name   = excluded.catcher_name,
+      runout_name    = excluded.runout_name,
       scoreboard     = excluded.scoreboard,
       sort_order     = excluded.sort_order,
       is_active      = excluded.is_active,
@@ -213,6 +214,7 @@ function upsertStats(matchId, playerStats) {
         fantasyPoints,
         stat.bowlerName || null,
         stat.catcherName || null,
+        stat.runoutName || null,
         stat.scoreboard || null,
         stat.sortOrder || 99,
         stat.active ? 1 : 0

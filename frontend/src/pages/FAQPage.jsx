@@ -140,6 +140,73 @@ export default function FAQPage() {
 
         {/* Timeline */}
         <section className="faq-section">
+          <h2 className="faq-section-title">🔣 Picker symbols guide</h2>
+          <div style={{display:'flex',flexDirection:'column',gap:0}}>
+
+            {/* Selection */}
+            <p className="faq-subhead" style={{color:'var(--color-text-secondary)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.08em',marginBottom:8,marginTop:4}}>SELECTION</p>
+            {[
+              { badge: <span style={{width:28,height:28,borderRadius:6,background:'#1e2040',border:'1px solid #2a2d50',display:'flex',alignItems:'center',justifyContent:'center',color:'#00E5FF',fontSize:18,flexShrink:0}}>+</span>, label: 'Add to Main XI', desc: 'Tap to select as one of your 11 main players' },
+              { badge: <span style={{width:28,height:28,borderRadius:6,background:'#2a1f00',border:'1px solid #665500',display:'flex',alignItems:'center',justifyContent:'center',color:'#FFB300',fontSize:13,fontWeight:700,flexShrink:0}}>B</span>, label: 'Add as Backup', desc: 'Auto-replaces a non-playing main player at toss' },
+              { badge: <span style={{width:28,height:28,borderRadius:6,background:'#1a3300',border:'1px solid #336600',display:'flex',alignItems:'center',justifyContent:'center',color:'#66FF44',fontSize:11,fontWeight:700,flexShrink:0}}>B✓</span>, label: 'Backup selected', desc: 'Player confirmed as your backup' },
+            ].map((item, i) => (
+              <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
+                {item.badge}
+                <div>
+                  <div style={{fontSize:'0.85rem',fontWeight:500,color:'var(--color-text)'}}>{item.label}</div>
+                  <div style={{fontSize:'0.75rem',color:'var(--color-text-secondary)'}}>{item.desc}</div>
+                </div>
+              </div>
+            ))}
+
+            {/* Captain */}
+            <p className="faq-subhead" style={{color:'var(--color-text-secondary)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.08em',marginBottom:8,marginTop:16}}>CAPTAIN & VICE CAPTAIN</p>
+            {[
+              { badge: <span style={{width:28,height:28,borderRadius:'50%',background:'#cc8800',display:'flex',alignItems:'center',justifyContent:'center',color:'#000',fontSize:13,fontWeight:700,flexShrink:0}}>C</span>, label: 'Captain · 2× points', desc: 'All fantasy points doubled for this player' },
+              { badge: <span style={{width:28,height:28,borderRadius:'50%',background:'#00bcd4',display:'flex',alignItems:'center',justifyContent:'center',color:'#000',fontSize:11,fontWeight:700,flexShrink:0}}>VC</span>, label: 'Vice Captain · 1.5× points', desc: '50% bonus added to all fantasy points' },
+            ].map((item, i) => (
+              <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
+                {item.badge}
+                <div>
+                  <div style={{fontSize:'0.85rem',fontWeight:500,color:'var(--color-text)'}}>{item.label}</div>
+                  <div style={{fontSize:'0.75rem',color:'var(--color-text-secondary)'}}>{item.desc}</div>
+                </div>
+              </div>
+            ))}
+
+            {/* Status dots */}
+            <p className="faq-subhead" style={{color:'var(--color-text-secondary)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.08em',marginBottom:8,marginTop:16}}>PLAYER STATUS</p>
+            {[
+              { badge: <span style={{width:10,height:10,borderRadius:'50%',background:'#00E5FF',display:'inline-block',flexShrink:0,margin:'0 9px'}} />, label: 'Playing XI confirmed', desc: 'Player is in the playing 11 — confirmed after toss' },
+              { badge: <span style={{width:10,height:10,borderRadius:'50%',border:'1.5px solid #3a3a5a',display:'inline-block',flexShrink:0,margin:'0 9px'}} />, label: 'Not yet confirmed', desc: 'Playing XI not announced or player not selected' },
+            ].map((item, i) => (
+              <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
+                {item.badge}
+                <div>
+                  <div style={{fontSize:'0.85rem',fontWeight:500,color:'var(--color-text)'}}>{item.label}</div>
+                  <div style={{fontSize:'0.75rem',color:'var(--color-text-secondary)'}}>{item.desc}</div>
+                </div>
+              </div>
+            ))}
+
+            {/* Swap badges */}
+            <p className="faq-subhead" style={{color:'var(--color-text-secondary)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.08em',marginBottom:8,marginTop:16}}>DURING MATCH (SWAPS)</p>
+            {[
+              { badge: <span style={{padding:'2px 6px',borderRadius:3,background:'rgba(29,158,117,0.2)',color:'#1D9E75',fontSize:'0.65rem',fontWeight:700,flexShrink:0}}>↑IN</span>, label: 'Backup swapped in', desc: 'This backup replaced a non-playing main player' },
+              { badge: <span style={{padding:'2px 6px',borderRadius:3,background:'rgba(248,113,113,0.2)',color:'#f87171',fontSize:'0.65rem',fontWeight:700,flexShrink:0}}>OUT</span>, label: 'Swapped out', desc: 'This player was not in the playing XI — replaced by backup' },
+            ].map((item, i) => (
+              <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderBottom: i===0 ? '1px solid var(--border)' : 'none'}}>
+                {item.badge}
+                <div>
+                  <div style={{fontSize:'0.85rem',fontWeight:500,color:'var(--color-text)'}}>{item.label}</div>
+                  <div style={{fontSize:'0.75rem',color:'var(--color-text-secondary)'}}>{item.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="faq-section">
           <h2 className="faq-section-title">📅 Order of events</h2>
           <div className="faq-card">
             <div className="faq-timeline">

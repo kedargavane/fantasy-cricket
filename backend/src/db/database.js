@@ -327,6 +327,7 @@ function runMigrations(db) {
   try { db.exec('ALTER TABLE matches ADD COLUMN visitorteam_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE players ADD COLUMN sportmonks_player_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE player_match_stats ADD COLUMN bowler_name TEXT DEFAULT NULL'); } catch {}
+  try { db.exec('ALTER TABLE player_match_stats ADD COLUMN runout_name TEXT DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE player_match_stats ADD COLUMN catcher_name TEXT DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE player_match_stats ADD COLUMN scoreboard TEXT DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE player_match_stats ADD COLUMN sort_order INTEGER DEFAULT 99'); } catch {}
