@@ -35,16 +35,22 @@ function normaliseRole(position) {
 
 // ── Dismissal normalisation ───────────────────────────────────────────────────
 function normaliseDismissal(wicketId) {
-  // Sportmonks wicket IDs: https://docs.sportmonks.com
-  // Common: 1=bowled, 2=caught, 3=lbw, 4=run out, 5=stumped, 6=hit wicket
-  // 7=obstructing, 8=timed out, 9=handled ball, 54=not out, 79=various
-  if (!wicketId) return 'notout';
+  // Sportmonks wicket IDs (verified from live data):
+  // 54 = not out / innings ended not dismissed
+  // 1  = bowled, 2 = caught, 3 = lbw, 4 = run out, 5 = stumped
+  // 6  = hit wicket, 7 = obstructing, 8 = timed out, 9 = handled ball
+  // 79 = caught & bowled (bowler=catcher, catch_stump_player_id is null)
+  // 84 = caught (standard caught - catcher may be separate from bowler)
+  if (!wicketId) return 'notout'; // active / innings ended
   if (wicketId === 54) return 'notout';
   if (wicketId === 1)  return 'bowled';
   if (wicketId === 3)  return 'lbw';
   if (wicketId === 2)  return 'caught';
+  if (wicketId === 79) return 'caught';  // caught & bowled
+  if (wicketId === 84) return 'caught';  // standard caught
   if (wicketId === 4)  return 'runout';
   if (wicketId === 5)  return 'stumped';
+  if (wicketId === 6)  return 'hitwicket';
   return 'caught'; // default non-notout
 }
 
@@ -184,7 +190,9 @@ async function fetchFixtureScorecard(fixtureId) {
 
     // Dismissal details for scorecard display
     p.bowlerName   = b.bowling_player_id   ? (lineupNames[b.bowling_player_id]   || null) : null;
-    p.catcherName  = b.catch_stump_player_id ? (lineupNames[b.catch_stump_player_id] || null) : null;
+    // For c&b (wicket_id=79), catcher = bowler
+    const catcherId = b.catch_stump_player_id || (b.wicket_id === 79 ? b.bowling_player_id : null);
+    p.catcherName  = catcherId ? (lineupNames[catcherId] || null) : null;
     p.runoutName   = b.runout_by_id        ? (lineupNames[b.runout_by_id]        || null) : null;
     p.bowlerId     = b.bowling_player_id   || null;
     p.catcherId    = b.catch_stump_player_id || null;

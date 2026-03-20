@@ -360,7 +360,7 @@ export default function LiveScorePage() {
                   function dismissalText(p) {
                     const dt = p.dismissal_type;
                     if (!dt || dt === 'dnb') return 'DNB';
-                    if (dt === 'notout') return 'not out *';
+                    if (dt === 'notout') return p.is_active ? 'not out *' : 'not out';
                     if (dt === 'bowled') return p.bowler_name ? `b ${lastName(p.bowler_name)}` : 'bowled';
                     if (dt === 'lbw')    return p.bowler_name ? `lbw b ${lastName(p.bowler_name)}` : 'lbw';
                     if (dt === 'caught') {
@@ -400,7 +400,7 @@ export default function LiveScorePage() {
                             <tbody>
                               {batters.map(p => (
                                 <tr key={p.player_id}>
-                                  <td style={{fontWeight: p.is_active ? 600 : 400}}>{p.name}{p.is_active ? ' *' : ''}</td>
+                                  <td style={{fontWeight: p.is_active ? 600 : 400}}>{p.name}</td>
                                   <td style={{fontSize:'0.7rem',color:'var(--color-text-secondary)'}}>{dismissalText(p)}</td>
                                   <td className={p.runs>=50?'ls-highlight':''}>{p.runs||0}</td>
                                   <td>{p.balls_faced||0}</td>

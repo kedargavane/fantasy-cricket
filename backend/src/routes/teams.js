@@ -353,7 +353,16 @@ router.get('/compare/:matchId', requireAuth, (req, res) => {
       FROM user_team_swaps uts WHERE uts.user_team_id = ?
     `).all(ut.id);
 
-    return { ...ut, players: playersWithPts, swaps };
+    const swappedOutIds = new Set(swaps.map(s => s.swapped_out_player_id));
+    const swappedInIds  = new Set(swaps.map(s => s.swapped_in_player_id));
+
+    // Resolve active 11: mains (not swapped out) + swapped-in backups
+    const active11 = playersWithPts.filter(p => {
+      if (!p.is_backup) return !swappedOutIds.has(p.id); // main not swapped out
+      return swappedInIds.has(p.id);                      // backup that came in
+    });
+
+    return { ...ut, players: active11, swaps };
   }
 
   const teamA = getTeam(parseInt(userA));
