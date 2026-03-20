@@ -347,7 +347,13 @@ router.get('/compare/:matchId', requireAuth, (req, res) => {
       return { ...p, effective_pts: Math.round((p.base_pts || 0) * mult) };
     });
 
-    return { ...ut, players: playersWithPts };
+    // Get swap log
+    const swaps = db.prepare(`
+      SELECT uts.swapped_out_player_id, uts.swapped_in_player_id, uts.inherited_role
+      FROM user_team_swaps uts WHERE uts.user_team_id = ?
+    `).all(ut.id);
+
+    return { ...ut, players: playersWithPts, swaps };
   }
 
   const teamA = getTeam(parseInt(userA));

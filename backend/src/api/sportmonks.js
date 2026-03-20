@@ -170,6 +170,16 @@ async function fetchFixtureScorecard(fixtureId) {
     p.fours      = parseInt(b.four_x || 0, 10);
     p.sixes      = parseInt(b.six_x  || 0, 10);
     p.dismissalType = normaliseDismissal(b.wicket_id);
+    p.scoreboard = b.scoreboard; // S1 or S2
+    p.active     = b.active;     // currently batting
+    p.sortOrder  = b.sort || 99;
+
+    // Dismissal details for scorecard display
+    p.bowlerName   = b.bowling_player_id   ? (lineupNames[b.bowling_player_id]   || null) : null;
+    p.catcherName  = b.catch_stump_player_id ? (lineupNames[b.catch_stump_player_id] || null) : null;
+    p.runoutName   = b.runout_by_id        ? (lineupNames[b.runout_by_id]        || null) : null;
+    p.bowlerId     = b.bowling_player_id   || null;
+    p.catcherId    = b.catch_stump_player_id || null;
 
     // LBW/bowled bonus
     if ((p.dismissalType === 'lbw' || p.dismissalType === 'bowled') && b.bowling_player_id) {
@@ -187,6 +197,7 @@ async function fetchFixtureScorecard(fixtureId) {
     const battingTeamId = b.scoreboard === 'S1' ? localTeamId : visitorTeamId;
     const bowlingTeamId = battingTeamId === localTeamId ? visitorTeamId : localTeamId;
     const p = ensurePlayer(pid, bowlingTeamId);
+    p.scoreboard = b.scoreboard; // S1 bowlers bowl in 1st innings
 
     // Parse overs: Sportmonks stores as decimal e.g. 3.4 = 3 overs 4 balls
     const rawOvers = parseFloat(b.overs || 0);

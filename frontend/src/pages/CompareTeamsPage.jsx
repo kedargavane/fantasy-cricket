@@ -94,6 +94,12 @@ export default function CompareTeamsPage() {
         const A = comparison.teamA;
         const B = comparison.teamB;
         const commonIds = new Set(comparison.common.playerIds);
+        const swapsA = new Map((comparison.teamA.swaps||[]).map(s => [s.swapped_out_player_id, s.swapped_in_player_id]));
+        const swapsB = new Map((comparison.teamB.swaps||[]).map(s => [s.swapped_out_player_id, s.swapped_in_player_id]));
+        const swappedInA = new Set((comparison.teamA.swaps||[]).map(s => s.swapped_in_player_id));
+        const swappedInB = new Set((comparison.teamB.swaps||[]).map(s => s.swapped_in_player_id));
+        const swappedOutA = new Set((comparison.teamA.swaps||[]).map(s => s.swapped_out_player_id));
+        const swappedOutB = new Set((comparison.teamB.swaps||[]).map(s => s.swapped_out_player_id));
 
         // Separate mains and backups
         const mainA = A.players.filter(p => !p.is_backup);
@@ -202,31 +208,35 @@ export default function CompareTeamsPage() {
   );
 }
 
-function PlayerCell({ player, side }) {
+function PlayerCell({ player, side, swappedIn, swappedOut }) {
   if (!player) return <div className="cp-cell cp-empty" />;
-  const isRight = side === 'right';
-  const isCap   = player.role_in_team === 'captain';
-  const isVC    = player.role_in_team === 'vice_captain';
-  const pts     = player.effective_pts || 0;
+  const isRight   = side === 'right';
+  const isCap     = player.role_in_team === 'captain';
+  const isVC      = player.role_in_team === 'vice_captain';
+  const isXI      = player.is_playing_xi === 1;
+  const pts       = player.effective_pts || 0;
   const shortName = player.name.split(' ').slice(-1)[0];
 
+  function Badge() {
+    if (swappedIn)  return <span style={{fontSize:'0.55rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(29,158,117,0.2)',color:'#1D9E75',whiteSpace:'nowrap'}}>↑IN</span>;
+    if (swappedOut) return <span style={{fontSize:'0.55rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(248,113,113,0.2)',color:'#f87171',whiteSpace:'nowrap'}}>OUT</span>;
+    if (isCap)      return <div className="cp-badge cp-cap">C</div>;
+    if (isVC)       return <div className="cp-badge cp-vc">V</div>;
+    return <div className="cp-badge cp-none" />;
+  }
+
   return (
-    <div className={`cp-cell ${isRight ? 'cp-cell-right' : ''}`}>
-      {!isRight && (
-        <div className={`cp-badge ${isCap ? 'cp-cap' : isVC ? 'cp-vc' : 'cp-none'}`}>
-          {isCap ? 'C' : isVC ? 'V' : ''}
-        </div>
-      )}
+    <div className={`cp-cell ${isRight ? 'cp-cell-right' : ''} ${swappedOut ? 'cp-swapped-out' : ''}`}>
+      {!isRight && <Badge />}
       <div className={`cp-info ${isRight ? 'cp-info-right' : ''}`}>
-        <span className="cp-name">{shortName}</span>
+        <div style={{display:'flex',alignItems:'center',gap:4}}>
+          {isXI && <span style={{width:6,height:6,borderRadius:'50%',background:'#00E5FF',display:'inline-block',flexShrink:0}} />}
+          <span className="cp-name" style={{opacity: swappedOut ? 0.4 : 1}}>{shortName}</span>
+        </div>
         <span className="cp-sub">{player.team?.split(' ')[0]} · {player.role?.slice(0,3)}</span>
       </div>
-      <span className={`cp-pts ${pts > 0 ? 'cp-pts-pos' : pts < 0 ? 'cp-pts-neg' : ''}`}>{pts}</span>
-      {isRight && (
-        <div className={`cp-badge ${isCap ? 'cp-cap' : isVC ? 'cp-vc' : 'cp-none'}`}>
-          {isCap ? 'C' : isVC ? 'V' : ''}
-        </div>
-      )}
+      <span className={`cp-pts ${pts > 0 ? 'cp-pts-pos' : pts < 0 ? 'cp-pts-neg' : ''}`} style={{opacity: swappedOut ? 0.4 : 1}}>{pts}</span>
+      {isRight && <Badge />}
     </div>
   );
 }

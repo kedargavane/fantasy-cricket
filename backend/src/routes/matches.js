@@ -123,13 +123,15 @@ router.get('/:id/scores', requireAuth, (req, res) => {
       pms.overs_bowled, pms.wickets, pms.runs_conceded, pms.maidens,
       pms.catches, pms.stumpings, pms.run_outs,
       pms.fantasy_points,
+      pms.bowler_name, pms.catcher_name,
+      pms.scoreboard, pms.sort_order, pms.is_active,
       ms.is_playing_xi,
       pms.updated_at
     FROM player_match_stats pms
     JOIN players p ON p.id = pms.player_id
-    JOIN match_squads ms ON ms.match_id = pms.match_id AND ms.player_id = pms.player_id
+    LEFT JOIN match_squads ms ON ms.match_id = pms.match_id AND ms.player_id = pms.player_id
     WHERE pms.match_id = ?
-    ORDER BY pms.fantasy_points DESC
+    ORDER BY pms.scoreboard ASC, pms.sort_order ASC
   `).all(matchId);
 
   return res.json({ match, scores, lastSynced: match.last_synced });
