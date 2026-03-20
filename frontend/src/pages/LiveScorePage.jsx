@@ -44,10 +44,11 @@ export default function LiveScorePage() {
     setLoadingTeam(true);
     try {
       const res = await api.get(`/teams/user/${userId}/match/${matchId}`);
+      const team = res.data.team;
       setViewTeam({ 
         name: userName, 
-        players: res.data.team.players, 
-        swaps: res.data.team.swaps || [],
+        players: team.players, 
+        swaps: team.swaps || [],
         total: totalPts 
       });
     } catch {}
@@ -771,7 +772,7 @@ function InlineCompare({ data }) {
 }
 
 function PointsChart({ series }) {
-  const canvasId = 'ptChart_' + Math.random().toString(36).slice(2,7);
+  const canvasId = useRef('ptChart_' + Math.random().toString(36).slice(2,7)).current;
   const colors = ['#00e5ff','#a78bfa','#4ade80','#f472b6','#fb923c','#facc15','#60a5fa'];
   const maxOver = Math.max(...series.flatMap(s => s.data.map(d => d.over)));
 

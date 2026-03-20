@@ -561,6 +561,10 @@ router.get('/user/:userId/match/:matchId', requireAuth, (req, res) => {
     SELECT p.id, p.name, p.team, p.role,
       utp.is_backup, utp.backup_order,
       pms.fantasy_points,
+      pms.runs, pms.balls_faced, pms.fours, pms.sixes,
+      pms.overs_bowled, pms.wickets, pms.runs_conceded,
+      pms.catches, pms.stumpings, pms.run_outs,
+      pms.maidens, pms.dismissal_type,
       ms.is_playing_xi,
       CASE
         WHEN p.id = COALESCE(ut.resolved_captain_id, ut.captain_id) THEN 'captain'
@@ -576,5 +580,29 @@ router.get('/user/:userId/match/:matchId', requireAuth, (req, res) => {
     ORDER BY utp.is_backup ASC, pms.fantasy_points DESC NULLS LAST
   `).all(ut.id);
 
-  return res.json({ team: { ...ut, players } });
+  // Add scoring breakdown
+  const swaps = db.prepare(
+    'SELECT swapped_out_player_id, swapped_in_player_id FROM user_team_swaps WHERE user_team_id = ?'
+  ).all(ut.id);
+
+  const playersWithBreakdown = players.map(p => {
+    const { breakdown } = calculateFantasyPoints({
+      isPlayingXi:   p.is_playing_xi,
+      runs:          p.runs,
+      ballsFaced:    p.balls_faced,
+      fours:         p.fours,
+      sixes:         p.sixes,
+      dismissalType: p.dismissal_type,
+      oversBowled:   p.overs_bowled,
+      wickets:       p.wickets,
+      runsConceded:  p.runs_conceded,
+      maidens:       p.maidens,
+      catches:       p.catches,
+      stumpings:     p.stumpings,
+      runOuts:       p.run_outs,
+    }, 'normal', DEFAULT_SCORING_CONFIG);
+    return { ...p, breakdown };
+  });
+
+  return res.json({ team: { ...ut, players: playersWithBreakdown, swaps } });
 });
