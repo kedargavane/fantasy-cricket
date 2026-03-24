@@ -122,9 +122,9 @@ function upsertStats(matchId, playerStats) {
       (match_id, player_id, runs, balls_faced, fours, sixes, dismissal_type,
        overs_bowled, wickets, runs_conceded, maidens,
        catches, stumpings, run_outs, fantasy_points,
-       bowler_name, catcher_name, runout_name, scoreboard, sort_order, is_active, batting_team_id,
+       bowler_name, catcher_name, runout_name, scoreboard, sort_order, is_active, batting_team_id, match_team,
        updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(match_id, player_id) DO UPDATE SET
       runs           = excluded.runs,
       balls_faced    = excluded.balls_faced,
@@ -179,10 +179,12 @@ function upsertStats(matchId, playerStats) {
             // Update external_player_id to link scorecard → existing player
             db.prepare('UPDATE players SET external_player_id = ?, sportmonks_player_id = ? WHERE id = ?')
               .run(extId, parseInt(extId) || null, inSquad.id);
+            // Never overwrite franchise team name with national team from scorecard
             player = inSquad;
           }
         }
         if (!player) {
+          // Only set team on new players — don't overwrite franchise team with national team
           upsertPlayer.run(
             stat.name || `Player ${extId}`,
             stat.team || '',
@@ -219,7 +221,8 @@ function upsertStats(matchId, playerStats) {
         stat.scoreboard || null,
         stat.sortOrder || 99,
         stat.active ? 1 : 0,
-        (stat.battingTeamId != null && stat.battingTeamId !== undefined) ? stat.battingTeamId : null
+        (stat.battingTeamId != null && stat.battingTeamId !== undefined) ? stat.battingTeamId : null,
+        stat.team || null
       );
     }
   });

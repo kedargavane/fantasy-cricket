@@ -378,30 +378,38 @@ export default function LiveScorePage() {
                 let liveScoreData = [];
                 try { liveScoreData = JSON.parse(match?.live_score || '[]'); } catch {}
 
-                // Use player team name to identify batting team per innings
-                // SA batters in S1 all have team='South Africa', NZ bowlers in S1 have team='New Zealand'
-                const s1BatTeamName = scores.find(s => s.scoreboard === 'S1' && s.balls_faced > 0)?.team || '';
-                const s2BatTeamName = scores.find(s => s.scoreboard === 'S2' && s.balls_faced > 0)?.team || '';
+                // Use batting_team_id to separate batters from bowlers per innings
+                // batting_team_id is set from b.team_id in Sportmonks batting entries
+                // Bowlers have batting_team_id = null (not set from bowling entries)
+                const s1BatTeamId = scores.find(s => s.scoreboard === 'S1' && s.batting_team_id)?.batting_team_id;
+                const s2BatTeamId = scores.find(s => s.scoreboard === 'S2' && s.batting_team_id)?.batting_team_id;
+
+                // Also get team names for display (from players with known team name)
+                // Use match_team for display (national team name from fixture sync)
+                const s1BatTeamName = scores.find(s => s.scoreboard === 'S1' && s.batting_team_id === s1BatTeamId)?.match_team || '';
+                const s2BatTeamName = scores.find(s => s.scoreboard === 'S2' && s.batting_team_id === s2BatTeamId)?.match_team || '';
 
                 const inningsList = [
-                  { sb: 'S1', num: 1, batTeam: s1BatTeamName },
-                  { sb: 'S2', num: 2, batTeam: s2BatTeamName },
-                ].filter(inn => inn.batTeam);
+                  { sb: 'S1', num: 1, batTeamId: s1BatTeamId, batTeamName: s1BatTeamName },
+                  { sb: 'S2', num: 2, batTeamId: s2BatTeamId, batTeamName: s2BatTeamName },
+                ].filter(inn => inn.batTeamId);
 
                 if (inningsList.length === 0) {
                   return <div className="ls-empty">Score data syncing — check back shortly</div>;
                 }
 
                 return inningsList.map(inn => {
+                  // Batters: match by batting_team_id (reliable, from Sportmonks batting.team_id)
                   const batters = scores
-                    .filter(s => s.scoreboard === inn.sb && s.team === inn.batTeam && s.balls_faced > 0)
+                    .filter(s => s.scoreboard === inn.sb && s.batting_team_id === inn.batTeamId && s.balls_faced > 0)
                     .sort((a,b) => (a.sort_order||99) - (b.sort_order||99));
 
+                  // Bowlers: same innings, have overs, batting_team_id is null OR different team
                   const bowlers = scores
-                    .filter(s => s.scoreboard === inn.sb && s.overs_bowled > 0 && s.team !== inn.batTeam)
+                    .filter(s => s.scoreboard === inn.sb && s.overs_bowled > 0 && s.batting_team_id !== inn.batTeamId)
                     .sort((a,b) => (b.wickets||0) - (a.wickets||0));
 
-                  const bowlingTeamName = bowlers[0]?.team || '';
+                  const bowlingTeamName = bowlers.find(b => b.match_team)?.match_team || bowlers[0]?.team || '';
                   const inningScore = liveScoreData.find(s => s.inning === inn.num);
                   const scoreText = inningScore ? `${inningScore.r}/${inningScore.w} (${inningScore.o} ov)` : '';
 
@@ -416,7 +424,7 @@ export default function LiveScorePage() {
                           <span style={{fontSize:'0.7rem',color:'var(--color-text-secondary)',display:'block',marginBottom:2}}>
                             {inn.num}{inn.num===1?'st':inn.num===2?'nd':'rd'} INNINGS
                           </span>
-                          <span className="ls-innings-team">{inn.batTeam}</span>
+                          <span className="ls-innings-team">{inn.batTeamName}</span>
                         </div>
                         <span className="ls-innings-score">{scoreText}</span>
                       </div>
