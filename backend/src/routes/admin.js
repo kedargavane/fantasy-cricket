@@ -367,6 +367,41 @@ router.post('/matches/:id/cleanup-squad', (req, res) => {
   return res.json({ message: `Merged ${merged} duplicate players`, merged });
 });
 
+// ── POST /api/admin/seasons/:seasonId/sync-venues ───────────────────────────
+// Fetch venue info for all matches in a season
+router.post('/seasons/:seasonId/sync-venues', async (req, res) => {
+  const db = getDb();
+  const seasonId = parseInt(req.params.seasonId, 10);
+  const matches = db.prepare('SELECT * FROM matches WHERE season_id = ?').all(seasonId);
+  const { smGet } = require('../api/sportmonks');
+  const results = [];
+
+  for (const match of matches) {
+    if (!match.sportmonks_fixture_id) continue;
+    try {
+      const data = await smGet(`fixtures/${match.sportmonks_fixture_id}`, { include: 'venue,localteam,visitorteam' });
+      const f = data.data || {};
+      const venue = f.venue;
+      const venueInfo = venue ? `${venue.name}${venue.city ? ', ' + venue.city : ''}` : null;
+
+      // Also get toss if missing
+      let tossInfo = match.toss_info;
+      if (!tossInfo && f.toss_won_team_id) {
+        const tossTeam = f.toss_won_team_id === f.localteam_id
+          ? f.localteam?.name : f.visitorteam?.name;
+        tossInfo = tossTeam ? `${tossTeam} won toss · elected to ${f.elected || 'bat'}` : null;
+      }
+
+      db.prepare('UPDATE matches SET venue_info = ?, toss_info = COALESCE(toss_info, ?) WHERE id = ?')
+        .run(venueInfo, tossInfo, match.id);
+      results.push({ id: match.id, venue: venueInfo, toss: tossInfo });
+    } catch(e) {
+      results.push({ id: match.id, error: e.message });
+    }
+  }
+  return res.json({ updated: results.length, results });
+});
+
 // ── POST /api/admin/matches/:id/sync-live ────────────────────────────────────
 // Manually trigger a live scorecard sync for a match (uses Sportmonks)
 router.post('/matches/:id/sync-live', async (req, res) => {
