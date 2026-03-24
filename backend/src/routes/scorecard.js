@@ -46,6 +46,39 @@ async function buildScorecard(fixtureId, db) {
     const sb = b.scoreboard || 'S1';
     if (!inningsMap[sb]) inningsMap[sb] = { battingTeamId: null, batting: [], bowling: [] };
     inningsMap[sb].battingTeamId = b.team_id;
+
+    // Build dismissal text
+    const wid = b.wicket_id;
+    const bowlerN  = pname(b.bowling_player_id);
+    const catcherN = pname(b.catch_stump_player_id);
+    const runoutN  = pname(b.runout_by_id);
+    let dismissal = '';
+    if (!wid || wid === 54) {
+      dismissal = b.active ? 'not out *' : 'not out';
+    } else if (wid === 1) {
+      dismissal = bowlerN  ? `b ${lastName(bowlerN)}` : 'bowled';
+    } else if (wid === 3 || wid === 83) {
+      dismissal = bowlerN  ? `lbw b ${lastName(bowlerN)}` : 'lbw';
+    } else if (wid === 79) {
+      dismissal = bowlerN  ? `c&b ${lastName(bowlerN)}` : 'c&b';
+    } else if (wid === 84 || wid === 2) {
+      const c  = catcherN ? lastName(catcherN) : '';
+      const bw = bowlerN  ? lastName(bowlerN)  : '';
+      if (c && bw) dismissal = `c ${c} b ${bw}`;
+      else if (bw) dismissal = `c&b ${bw}`;
+      else         dismissal = 'caught';
+    } else if (wid === 4) {
+      dismissal = runoutN  ? `run out (${lastName(runoutN)})` : 'run out';
+    } else if (wid === 5) {
+      const wk = catcherN ? lastName(catcherN) : '';
+      const bw = bowlerN  ? lastName(bowlerN)  : '';
+      dismissal = wk && bw ? `st ${wk} b ${bw}` : 'stumped';
+    } else if (wid === 6) {
+      dismissal = 'hit wicket';
+    } else {
+      dismissal = 'out';
+    }
+
     inningsMap[sb].batting.push({
       player_id: b.player_id,
       name:      pname(b.player_id),
@@ -56,6 +89,7 @@ async function buildScorecard(fixtureId, db) {
       sort:      b.sort,
       active:    b.active,
       wicket_id: b.wicket_id,
+      dismissal,
     });
   }
   for (const b of (f.bowling || [])) {
