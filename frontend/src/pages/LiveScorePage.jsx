@@ -275,6 +275,9 @@ export default function LiveScorePage() {
         <button className="ls-back" onClick={() => navigate('/')}>‹</button>
         <div className="ls-header-info">
           <span className="ls-header-title">{match?.team_a} vs {match?.team_b}</span>
+          {match?.venue_info && (
+            <span style={{fontSize:'0.65rem',color:'var(--text-muted)',marginTop:1}}>🏟 {match.venue_info}</span>
+          )}
           {match?.toss_info && (
             <span style={{fontSize:'0.65rem',color:'var(--text-muted)',marginTop:1}}>{match.toss_info}</span>
           )}

@@ -93,9 +93,12 @@ function startCronJobs(io) {
           continue;
         }
 
-        // Store toss info if available
+        // Store toss and venue info
         if (info.tossInfo) {
           db.prepare('UPDATE matches SET toss_info = ? WHERE id = ?').run(info.tossInfo, match.id);
+        }
+        if (info.venueInfo) {
+          db.prepare('UPDATE matches SET venue_info = ? WHERE id = ?').run(info.venueInfo, match.id);
         }
 
         if (currentBalls > lastBalls) {

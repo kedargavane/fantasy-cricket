@@ -242,8 +242,15 @@ export default function TeamPickerPage() {
 
   if (loading) return <Spinner center />;
 
-  const colA = applyRoleFilter(playersA);
-  const colB = applyRoleFilter(playersB);
+  // Sort: XI confirmed first, then non-XI, within each group keep original order
+  function sortByXI(players) {
+    const xi    = players.filter(p => p.is_playing_xi);
+    const nonXI = players.filter(p => !p.is_playing_xi);
+    return [...xi, ...nonXI];
+  }
+
+  const colA = applyRoleFilter(sortByXI(playersA));
+  const colB = applyRoleFilter(sortByXI(playersB));
   const colAMain = playersA.filter(p => mainIds.has(p.id)).length;
   const colBMain = playersB.filter(p => mainIds.has(p.id)).length;
 
