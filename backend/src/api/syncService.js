@@ -142,7 +142,7 @@ function upsertStats(matchId, playerStats) {
       bowler_name    = excluded.bowler_name,
       catcher_name   = excluded.catcher_name,
       runout_name    = excluded.runout_name,
-      batting_team_id = excluded.batting_team_id,
+      batting_team_id = COALESCE(batting_team_id, excluded.batting_team_id),
       scoreboard     = excluded.scoreboard,
       sort_order     = excluded.sort_order,
       is_active      = excluded.is_active,
@@ -216,7 +216,7 @@ function upsertStats(matchId, playerStats) {
         stat.bowlerName || null,
         stat.catcherName || null,
         stat.runoutName || null,
-        stat.battingTeamId || null,
+        (stat.battingTeamId != null && stat.battingTeamId !== undefined) ? stat.battingTeamId : null,
         stat.scoreboard || null,
         stat.sortOrder || 99,
         stat.active ? 1 : 0

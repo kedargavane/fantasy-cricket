@@ -374,39 +374,42 @@ export default function LiveScorePage() {
           {scores.length === 0
             ? <div className="ls-empty">Scores not available yet</div>
             : (() => {
-                // Group by scoreboard (S1, S2 etc)
                 let liveScoreData = [];
                 try { liveScoreData = JSON.parse(match?.live_score || '[]'); } catch {}
 
-                const scoreboards = [...new Set(scores.map(s => s.scoreboard).filter(Boolean))].sort();
-                if (scoreboards.length === 0) scoreboards.push(null);
+                // Group by innings using team_id on batting entries
+                // S1 batting team = team_id of S1 batting entries
+                // S2 batting team = team_id of S2 batting entries
+                const s1BatTeam = scores.find(s => s.scoreboard === 'S1' && s.batting_team_id)?.batting_team_id;
+                const s2BatTeam = scores.find(s => s.scoreboard === 'S2' && s.batting_team_id)?.batting_team_id;
 
-                return scoreboards.map((sb, sbIdx) => {
-                  // S1 = 1st innings batting, S2 = 2nd innings batting
-                  // Batters in this innings have scoreboard === sb
-                  // Bowlers in this innings have scoreboard === sb (they bowl when the other team bats)
-                  // But bowlers' scoreboard field = the innings they BOWLED in
-                  // So: S1 batters bat in S1, S1 bowlers bowl against S1 batters
-                  // Determine the batting team for this innings from batting_team_id
-                  // Batters: have batting_team_id set (from Sportmonks batting entries)
-                  // Bowlers: have scoreboard matching this innings but no batting_team_id
-                  const sbBatters = sb
-                    ? scores.filter(s => s.scoreboard === sb && s.batting_team_id !== null && s.batting_team_id !== undefined && s.balls_faced > 0)
-                    : scores.filter(s => s.balls_faced > 0 && s.batting_team_id !== null);
-                  const sbBowlers = sb
-                    ? scores.filter(s => s.scoreboard === sb && s.overs_bowled > 0)
-                    : scores.filter(s => s.overs_bowled > 0);
+                const innings = [
+                  { sb: 'S1', num: 1, battingTeamId: s1BatTeam },
+                  { sb: 'S2', num: 2, battingTeamId: s2BatTeam },
+                ].filter(inn => inn.battingTeamId);
 
-                  const batters = sbBatters.sort((a,b) => (a.sort_order||99)-(b.sort_order||99));
-                  const bowlers = sbBowlers.sort((a,b) => (b.wickets||0)-(a.wickets||0));
+                return innings.map(inn => {
+                  // Batters: same sb AND same batting_team_id, sorted by sort_order
+                  const batters = scores
+                    .filter(s => s.scoreboard === inn.sb && s.batting_team_id === inn.battingTeamId && s.balls_faced > 0)
+                    .sort((a,b) => (a.sort_order||99) - (b.sort_order||99));
 
-                  // Get batting team name from first batter's team
-                  const battingTeam = batters[0]?.team || '';
-                  const bowlingTeam = bowlers[0]?.team || '';
+                  // Bowlers: same scoreboard, have overs, and their player team != batting team
+                  const bowlers = scores
+                    .filter(s => {
+                      if (s.scoreboard !== inn.sb) return false;
+                      if (!s.overs_bowled || s.overs_bowled <= 0) return false;
+                      // Bowler's team is their player.team — must be different from batting team name
+                      return s.team !== battingTeamName;
+                    })
+                    .sort((a,b) => (b.wickets||0) - (a.wickets||0));
 
-                  // Get innings score from live_score JSON
-                  const inningNum = sbIdx + 1;
-                  const inningScore = liveScoreData.find(s => s.inning === inningNum);
+                  // Team names from player data
+                  const battingTeamName = batters[0]?.team || '';
+                  const bowlingTeamName = bowlers[0]?.team || '';
+
+                  // Innings score from live_score
+                  const inningScore = liveScoreData.find(s => s.inning === inn.num);
                   const scoreText = inningScore ? `${inningScore.r}/${inningScore.w} (${inningScore.o} ov)` : '';
 
                   function isOut(p) {
@@ -414,13 +417,13 @@ export default function LiveScorePage() {
                   }
 
                   return (
-                    <div key={sb || 'main'} className="ls-innings" style={{marginBottom:24}}>
+                    <div key={inn.sb} style={{marginBottom:24}}>
                       <div className="ls-innings-header">
                         <div>
-                          <span className="ls-innings-label" style={{fontSize:'0.7rem',color:'var(--color-text-secondary)',display:'block',marginBottom:2}}>
-                            {inningNum}{inningNum===1?'st':inningNum===2?'nd':inningNum===3?'rd':'th'} INNINGS
+                          <span style={{fontSize:'0.7rem',color:'var(--color-text-secondary)',display:'block',marginBottom:2}}>
+                            {inn.num}{inn.num===1?'st':inn.num===2?'nd':'rd'} INNINGS
                           </span>
-                          <span className="ls-innings-team">{battingTeam}</span>
+                          <span className="ls-innings-team">{battingTeamName}</span>
                         </div>
                         <span className="ls-innings-score">{scoreText}</span>
                       </div>
@@ -432,10 +435,8 @@ export default function LiveScorePage() {
                             <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
                             <tbody>
                               {batters.map(p => (
-                                <tr key={p.player_id}>
-                                  <td style={{opacity: isOut(p) ? 0.55 : 1}}>
-                                    {p.is_active ? <strong>{p.name} *</strong> : p.name}
-                                  </td>
+                                <tr key={p.player_id} style={{opacity: isOut(p) ? 0.55 : 1}}>
+                                  <td>{p.is_active ? <strong>{p.name} *</strong> : p.name}</td>
                                   <td className={p.runs>=50?'ls-highlight':''}>{p.runs||0}</td>
                                   <td style={{color:'var(--color-text-secondary)'}}>{p.balls_faced||0}</td>
                                   <td>{p.fours||0}</td>
@@ -449,7 +450,7 @@ export default function LiveScorePage() {
 
                       {bowlers.length > 0 && (
                         <>
-                          <div className="ls-sc-section" style={{marginTop:12}}>{bowlingTeam} Bowling</div>
+                          <div className="ls-sc-section" style={{marginTop:12}}>{bowlingTeamName} Bowling</div>
                           <table className="ls-sc-table">
                             <thead><tr><th>Bowler</th><th>O</th><th>W</th><th>R</th><th>Eco</th></tr></thead>
                             <tbody>
@@ -461,7 +462,7 @@ export default function LiveScorePage() {
                                   <td>{p.runs_conceded||0}</td>
                                   <td>{p.overs_bowled>0?(p.runs_conceded/p.overs_bowled).toFixed(1):'-'}</td>
                                 </tr>
-                                  ))}
+                              ))}
                             </tbody>
                           </table>
                         </>
