@@ -387,11 +387,12 @@ export default function LiveScorePage() {
                   // Bowlers in this innings have scoreboard === sb (they bowl when the other team bats)
                   // But bowlers' scoreboard field = the innings they BOWLED in
                   // So: S1 batters bat in S1, S1 bowlers bowl against S1 batters
-                  // Batters: must have faced at least 1 ball in this innings
+                  // Determine the batting team for this innings from batting_team_id
+                  // Batters: have batting_team_id set (from Sportmonks batting entries)
+                  // Bowlers: have scoreboard matching this innings but no batting_team_id
                   const sbBatters = sb
-                    ? scores.filter(s => s.scoreboard === sb && s.balls_faced > 0)
-                    : scores.filter(s => s.balls_faced > 0);
-                  // Bowlers: must have bowled at least 0.1 overs in this innings
+                    ? scores.filter(s => s.scoreboard === sb && s.batting_team_id !== null && s.batting_team_id !== undefined && s.balls_faced > 0)
+                    : scores.filter(s => s.balls_faced > 0 && s.batting_team_id !== null);
                   const sbBowlers = sb
                     ? scores.filter(s => s.scoreboard === sb && s.overs_bowled > 0)
                     : scores.filter(s => s.overs_bowled > 0);

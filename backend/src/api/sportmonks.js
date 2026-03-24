@@ -184,9 +184,10 @@ async function fetchFixtureScorecard(fixtureId) {
     p.fours      = parseInt(b.four_x || 0, 10);
     p.sixes      = parseInt(b.six_x  || 0, 10);
     p.dismissalType = normaliseDismissal(b.wicket_id);
-    p.scoreboard = b.scoreboard; // S1 or S2
-    p.active     = b.active;     // currently batting
-    p.sortOrder  = b.sort || 99;
+    p.scoreboard    = b.scoreboard; // S1 or S2
+    p.battingTeamId = b.team_id;    // team that batted (used to separate batters from bowlers)
+    p.active        = b.active;     // currently batting
+    p.sortOrder     = b.sort || 99;
 
     // Dismissal details for scorecard display
     p.bowlerName   = b.bowling_player_id   ? (lineupNames[b.bowling_player_id]   || null) : null;
