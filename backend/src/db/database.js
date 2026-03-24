@@ -323,6 +323,7 @@ function runMigrations(db) {
   try { db.exec('ALTER TABLE matches ADD COLUMN last_ball_count INTEGER NOT NULL DEFAULT 0'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN live_score TEXT DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN toss_info TEXT DEFAULT NULL'); } catch {}
+  try { db.exec('ALTER TABLE matches ADD COLUMN scorecard_json TEXT DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN sportmonks_season_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN localteam_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN visitorteam_id INTEGER DEFAULT NULL'); } catch {}
@@ -398,6 +399,7 @@ function runMigrations(db) {
     // Migration: add live_score column to matches
     try { db.exec('ALTER TABLE matches ADD COLUMN live_score TEXT DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN toss_info TEXT DEFAULT NULL'); } catch {}
+  try { db.exec('ALTER TABLE matches ADD COLUMN scorecard_json TEXT DEFAULT NULL'); } catch {}
 
     // Migration: update Season 2 invite code to match Season 1 (GYARAH1)
     try {
