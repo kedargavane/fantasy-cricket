@@ -26,6 +26,7 @@ router.get('/', requireAuth, (req, res) => {
     SELECT
       m.id, m.external_match_id, m.team_a, m.team_b, m.venue,
       m.match_type, m.status, m.start_time, m.last_synced, m.live_score,
+      m.toss_info, m.venue_info,
       mc.entry_units,
       -- Has this user submitted a team?
       CASE WHEN ut.id IS NOT NULL THEN 1 ELSE 0 END as has_team,

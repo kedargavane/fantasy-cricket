@@ -215,6 +215,9 @@ function MatchCard({ match, navigate }) {
           <span className="match-vs">v</span>
           <span>{match.team_b}</span>
         </div>
+        {match.venue_info && (
+          <span className="text-muted" style={{fontSize:'0.68rem'}}>🏟 {match.venue_info}</span>
+        )}
         <span className="match-time text-muted text-sm">{timeStr}</span>
       </div>
       <div className="match-card-right">
