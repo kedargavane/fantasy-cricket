@@ -7,6 +7,11 @@ const { smGet } = require('../api/sportmonks');
 
 const router = express.Router();
 
+function lastName(name) {
+  if (!name) return '';
+  return name.split(' ').pop();
+}
+
 // Build scorecard innings from Sportmonks fixture data
 async function buildScorecard(fixtureId, db) {
   const data = await smGet(`fixtures/${fixtureId}`, {

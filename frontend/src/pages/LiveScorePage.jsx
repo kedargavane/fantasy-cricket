@@ -402,7 +402,7 @@ export default function LiveScorePage() {
                       <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
                       <tbody>
                         {inn.batting.map(p => (
-                          <tr key={p.player_id} style={{opacity: p.wicket_id && p.wicket_id !== 54 ? 0.55 : 1}}>
+                          <tr key={p.player_id}>
                             <td>{p.active ? <strong>{p.name} *</strong> : p.name}</td>
                             <td className={p.runs>=50?'ls-highlight':''}>{p.runs??0}</td>
                             <td style={{color:'var(--color-text-secondary)'}}>{p.balls??0}</td>
