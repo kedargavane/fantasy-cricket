@@ -387,8 +387,14 @@ export default function LiveScorePage() {
                   // Bowlers in this innings have scoreboard === sb (they bowl when the other team bats)
                   // But bowlers' scoreboard field = the innings they BOWLED in
                   // So: S1 batters bat in S1, S1 bowlers bowl against S1 batters
-                  const sbBatters = sb ? scores.filter(s => s.scoreboard === sb && (s.balls_faced > 0 || s.dismissal_type !== 'dnb')) : scores.filter(s => s.balls_faced > 0);
-                  const sbBowlers = sb ? scores.filter(s => s.scoreboard === sb && s.overs_bowled > 0) : scores.filter(s => s.overs_bowled > 0);
+                  // Batters: must have faced at least 1 ball in this innings
+                  const sbBatters = sb
+                    ? scores.filter(s => s.scoreboard === sb && s.balls_faced > 0)
+                    : scores.filter(s => s.balls_faced > 0);
+                  // Bowlers: must have bowled at least 0.1 overs in this innings
+                  const sbBowlers = sb
+                    ? scores.filter(s => s.scoreboard === sb && s.overs_bowled > 0)
+                    : scores.filter(s => s.overs_bowled > 0);
 
                   const batters = sbBatters.sort((a,b) => (a.sort_order||99)-(b.sort_order||99));
                   const bowlers = sbBowlers.sort((a,b) => (b.wickets||0)-(a.wickets||0));
@@ -409,7 +415,7 @@ export default function LiveScorePage() {
                   function dismissalText(p) {
                     const dt = p.dismissal_type;
                     if (!dt || dt === 'dnb') return 'DNB';
-                    if (dt === 'notout') return p.is_active ? 'not out *' : 'not out';
+                    if (dt === 'notout') return p.is_active ? 'batting *' : 'not out';
                     if (dt === 'bowled') return p.bowler_name ? `b ${lastName(p.bowler_name)}` : 'bowled';
                     if (dt === 'lbw')    return p.bowler_name ? `lbw b ${lastName(p.bowler_name)}` : 'lbw';
                     if (dt === 'caught') {
