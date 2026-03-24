@@ -110,7 +110,8 @@ function upsertStats(matchId, playerStats) {
     INSERT INTO players (name, team, role, external_player_id, sportmonks_player_id)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(external_player_id) DO UPDATE SET
-      name = excluded.name, team = excluded.team
+      name = excluded.name
+      -- team intentionally NOT updated: franchise team must not be overwritten by national team
   `);
   const addToSquad = db.prepare(`
     INSERT INTO match_squads (match_id, player_id, is_playing_xi)
@@ -142,7 +143,7 @@ function upsertStats(matchId, playerStats) {
       bowler_name    = excluded.bowler_name,
       catcher_name   = excluded.catcher_name,
       runout_name    = excluded.runout_name,
-      batting_team_id = COALESCE(batting_team_id, excluded.batting_team_id),
+      batting_team_id = COALESCE(excluded.batting_team_id, batting_team_id),
       scoreboard     = excluded.scoreboard,
       sort_order     = excluded.sort_order,
       is_active      = excluded.is_active,

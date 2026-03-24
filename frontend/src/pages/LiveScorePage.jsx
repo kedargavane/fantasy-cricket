@@ -22,6 +22,7 @@ export default function LiveScorePage() {
   const [tab, setTab]           = useState(0); // will update after match loads
   const [viewTeam, setViewTeam] = useState(null);
   const [snapshots, setSnapshots] = useState([]);
+  const [scorecard, setScorecard] = useState(null);
   const [result, setResult]       = useState(null);
   const [loadingTeam, setLoadingTeam] = useState(false);
   const [compareA, setCompareA] = useState(0);
@@ -76,6 +77,10 @@ export default function LiveScorePage() {
         setCompareA(prev => prev || aId);
         setCompareB(prev => prev || bId);
       }
+      try {
+        const scRes = await api.get(`/scorecard/${matchId}`);
+        setScorecard(scRes.data.innings || []);
+      } catch {}
       try {
         const snRes = await api.get(`/matches/${matchId}/rank-snapshots`);
         setSnapshots(snRes.data.series || []);
@@ -368,109 +373,66 @@ export default function LiveScorePage() {
         </div>
       )}
 
-      {/* Tab 1/2: Match Score — innings grouped */}
+      {/* Tab 1/2: Match Score */}
       {((match?.status === 'completed' && tab === 2) || (match?.status !== 'completed' && tab === 1)) && (
         <div className="ls-content">
-          {scores.length === 0
+          {!scorecard
+            ? <div className="ls-empty">Loading scorecard...</div>
+            : scorecard.length === 0
             ? <div className="ls-empty">Scores not available yet</div>
-            : (() => {
-                try {
-                let liveScoreData = [];
-                try { liveScoreData = JSON.parse(match?.live_score || '[]'); } catch {}
-
-                // Use batting_team_id to separate batters from bowlers per innings
-                // batting_team_id is set from b.team_id in Sportmonks batting entries
-                // Bowlers have batting_team_id = null (not set from bowling entries)
-                const s1BatTeamId = scores.find(s => s.scoreboard === 'S1' && s.batting_team_id)?.batting_team_id;
-                const s2BatTeamId = scores.find(s => s.scoreboard === 'S2' && s.batting_team_id)?.batting_team_id;
-
-                // Also get team names for display (from players with known team name)
-                // Use match_team for display (national team name from fixture sync)
-                const s1BatTeamName = scores.find(s => s.scoreboard === 'S1' && s.batting_team_id === s1BatTeamId)?.match_team || '';
-                const s2BatTeamName = scores.find(s => s.scoreboard === 'S2' && s.batting_team_id === s2BatTeamId)?.match_team || '';
-
-                const inningsList = [
-                  { sb: 'S1', num: 1, batTeamId: s1BatTeamId, batTeamName: s1BatTeamName },
-                  { sb: 'S2', num: 2, batTeamId: s2BatTeamId, batTeamName: s2BatTeamName },
-                ].filter(inn => inn.batTeamId);
-
-                if (inningsList.length === 0) {
-                  return <div className="ls-empty">Score data syncing — check back shortly</div>;
-                }
-
-                return inningsList.map(inn => {
-                  // Batters: match by batting_team_id (reliable, from Sportmonks batting.team_id)
-                  const batters = scores
-                    .filter(s => s.scoreboard === inn.sb && s.batting_team_id === inn.batTeamId && s.balls_faced > 0)
-                    .sort((a,b) => (a.sort_order||99) - (b.sort_order||99));
-
-                  // Bowlers: same innings, have overs, batting_team_id is null OR different team
-                  const bowlers = scores
-                    .filter(s => s.scoreboard === inn.sb && s.overs_bowled > 0 && s.batting_team_id !== inn.batTeamId)
-                    .sort((a,b) => (b.wickets||0) - (a.wickets||0));
-
-                  const bowlingTeamName = bowlers.find(b => b.match_team)?.match_team || bowlers[0]?.team || '';
-                  const inningScore = liveScoreData.find(s => s.inning === inn.num);
-                  const scoreText = inningScore ? `${inningScore.r}/${inningScore.w} (${inningScore.o} ov)` : '';
-
-                  function isOut(p) {
-                    return p.dismissal_type && !['notout','dnb',''].includes(p.dismissal_type);
-                  }
-
-                  return (
-                    <div key={inn.sb} style={{marginBottom:24}}>
-                      <div className="ls-innings-header">
-                        <div>
-                          <span style={{fontSize:'0.7rem',color:'var(--color-text-secondary)',display:'block',marginBottom:2}}>
-                            {inn.num}{inn.num===1?'st':inn.num===2?'nd':'rd'} INNINGS
-                          </span>
-                          <span className="ls-innings-team">{inn.batTeamName}</span>
-                        </div>
-                        <span className="ls-innings-score">{scoreText}</span>
-                      </div>
-
-                      {batters.length > 0 && (<>
-                        <div className="ls-sc-section">Batting</div>
-                        <table className="ls-sc-table">
-                          <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
-                          <tbody>
-                            {batters.map(p => (
-                              <tr key={p.player_id} style={{opacity: isOut(p) ? 0.55 : 1}}>
-                                <td>{p.is_active ? <strong>{p.name} *</strong> : p.name}</td>
-                                <td className={p.runs>=50?'ls-highlight':''}>{p.runs||0}</td>
-                                <td style={{color:'var(--color-text-secondary)'}}>{p.balls_faced||0}</td>
-                                <td>{p.fours||0}</td>
-                                <td>{p.sixes||0}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </>)}
-
-                      {bowlers.length > 0 && (<>
-                        <div className="ls-sc-section" style={{marginTop:12}}>{bowlingTeamName} Bowling</div>
-                        <table className="ls-sc-table">
-                          <thead><tr><th>Bowler</th><th>O</th><th>W</th><th>R</th><th>Eco</th></tr></thead>
-                          <tbody>
-                            {bowlers.map(p => (
-                              <tr key={p.player_id}>
-                                <td>{p.name}</td>
-                                <td>{p.overs_bowled||0}</td>
-                                <td className={p.wickets>0?'ls-highlight':''}>{p.wickets||0}</td>
-                                <td>{p.runs_conceded||0}</td>
-                                <td>{p.overs_bowled>0?(p.runs_conceded/p.overs_bowled).toFixed(1):'-'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </>)}
+            : scorecard.map(inn => (
+                <div key={inn.scoreboard} style={{marginBottom:24}}>
+                  <div className="ls-innings-header">
+                    <div>
+                      <span style={{fontSize:'0.7rem',color:'var(--color-text-secondary)',display:'block',marginBottom:2}}>
+                        {inn.inningNum}{inn.inningNum===1?'st':inn.inningNum===2?'nd':'rd'} INNINGS
+                      </span>
+                      <span className="ls-innings-team">{inn.battingTeam}</span>
                     </div>
-                  );
-                });
-                } catch(e) {
-                  return <div className="ls-empty" style={{color:'#f87171'}}>Error loading scorecard: {e.message}</div>;
-                }
-              })()
+                    {inn.score && (
+                      <span className="ls-innings-score">
+                        {inn.score.r}/{inn.score.w} ({inn.score.o} ov)
+                      </span>
+                    )}
+                  </div>
+
+                  {inn.batting.length > 0 && (<>
+                    <div className="ls-sc-section">Batting</div>
+                    <table className="ls-sc-table">
+                      <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
+                      <tbody>
+                        {inn.batting.map(p => (
+                          <tr key={p.player_id} style={{opacity: p.wicket_id && p.wicket_id !== 54 ? 0.55 : 1}}>
+                            <td>{p.active ? <strong>{p.name} *</strong> : p.name}</td>
+                            <td className={p.runs>=50?'ls-highlight':''}>{p.runs??0}</td>
+                            <td style={{color:'var(--color-text-secondary)'}}>{p.balls??0}</td>
+                            <td>{p.fours??0}</td>
+                            <td>{p.sixes??0}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>)}
+
+                  {inn.bowling.length > 0 && (<>
+                    <div className="ls-sc-section" style={{marginTop:12}}>{inn.bowlingTeam} Bowling</div>
+                    <table className="ls-sc-table">
+                      <thead><tr><th>Bowler</th><th>O</th><th>W</th><th>R</th><th>Eco</th></tr></thead>
+                      <tbody>
+                        {inn.bowling.map(p => (
+                          <tr key={p.player_id}>
+                            <td>{p.name}</td>
+                            <td>{p.overs??0}</td>
+                            <td className={p.wickets>0?'ls-highlight':''}>{p.wickets??0}</td>
+                            <td>{p.runs??0}</td>
+                            <td>{p.economy?Number(p.economy).toFixed(1):'-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>)}
+                </div>
+              ))
           }
         </div>
       )}
