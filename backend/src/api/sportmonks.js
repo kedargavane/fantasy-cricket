@@ -295,6 +295,7 @@ async function fetchFixtureInfo(fixtureId) {
 }
 
 module.exports = {
+  smGet,
   fetchSeasonFixtures,
   fetchTeamById,
   fetchPlayerById,

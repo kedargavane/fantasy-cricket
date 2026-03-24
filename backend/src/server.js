@@ -36,7 +36,7 @@ app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().
 // Routes
 app.use('/api/auth',        require('./routes/auth'));
 app.use('/api/matches',     require('./routes/matches'));
-app.use('/api/scorecard',   require('./routes/scorecard'));
+app.use('/api/scorecard',   require('./routes/scorecard').router);
 app.use('/api/teams',       require('./routes/teams'));
 app.use('/api/leaderboard', require('./routes/leaderboard'));
 app.use('/api/admin',       require('./routes/admin'));
