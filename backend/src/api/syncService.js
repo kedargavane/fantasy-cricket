@@ -216,10 +216,10 @@ function upsertStats(matchId, playerStats) {
         stat.bowlerName || null,
         stat.catcherName || null,
         stat.runoutName || null,
-        (stat.battingTeamId != null && stat.battingTeamId !== undefined) ? stat.battingTeamId : null,
         stat.scoreboard || null,
         stat.sortOrder || 99,
-        stat.active ? 1 : 0
+        stat.active ? 1 : 0,
+        (stat.battingTeamId != null && stat.battingTeamId !== undefined) ? stat.battingTeamId : null
       );
     }
   });
