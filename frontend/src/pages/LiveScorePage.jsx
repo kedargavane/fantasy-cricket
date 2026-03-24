@@ -374,6 +374,7 @@ export default function LiveScorePage() {
           {scores.length === 0
             ? <div className="ls-empty">Scores not available yet</div>
             : (() => {
+                try {
                 let liveScoreData = [];
                 try { liveScoreData = JSON.parse(match?.live_score || '[]'); } catch {}
 
@@ -458,6 +459,9 @@ export default function LiveScorePage() {
                     </div>
                   );
                 });
+                } catch(e) {
+                  return <div className="ls-empty" style={{color:'#f87171'}}>Error loading scorecard: {e.message}</div>;
+                }
               })()
           }
         </div>

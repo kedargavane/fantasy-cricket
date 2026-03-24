@@ -137,7 +137,8 @@ router.get('/:id/scores', requireAuth, (req, res) => {
 
   // Add scoring breakdown to each player
   const scoresWithBreakdown = scores.map(s => {
-    const { breakdown } = calculateFantasyPoints({
+    let breakdown = {};
+    try { ({ breakdown } = calculateFantasyPoints({
       isPlayingXi:   s.is_playing_xi,
       runs:          s.runs,
       ballsFaced:    s.balls_faced,
@@ -151,7 +152,7 @@ router.get('/:id/scores', requireAuth, (req, res) => {
       catches:       s.catches,
       stumpings:     s.stumpings,
       runOuts:       s.run_outs,
-    }, 'normal', DEFAULT_SCORING_CONFIG);
+    }, 'normal', DEFAULT_SCORING_CONFIG)); } catch(e) { breakdown = {}; }
     return { ...s, breakdown };
   });
 
