@@ -377,38 +377,30 @@ export default function LiveScorePage() {
                 let liveScoreData = [];
                 try { liveScoreData = JSON.parse(match?.live_score || '[]'); } catch {}
 
-                // Group by innings using team_id on batting entries
-                // S1 batting team = team_id of S1 batting entries
-                // S2 batting team = team_id of S2 batting entries
-                const s1BatTeam = scores.find(s => s.scoreboard === 'S1' && s.batting_team_id)?.batting_team_id;
-                const s2BatTeam = scores.find(s => s.scoreboard === 'S2' && s.batting_team_id)?.batting_team_id;
+                // Use player team name to identify batting team per innings
+                // SA batters in S1 all have team='South Africa', NZ bowlers in S1 have team='New Zealand'
+                const s1BatTeamName = scores.find(s => s.scoreboard === 'S1' && s.balls_faced > 0)?.team || '';
+                const s2BatTeamName = scores.find(s => s.scoreboard === 'S2' && s.balls_faced > 0)?.team || '';
 
-                const innings = [
-                  { sb: 'S1', num: 1, battingTeamId: s1BatTeam },
-                  { sb: 'S2', num: 2, battingTeamId: s2BatTeam },
-                ].filter(inn => inn.battingTeamId);
+                const inningsList = [
+                  { sb: 'S1', num: 1, batTeam: s1BatTeamName },
+                  { sb: 'S2', num: 2, batTeam: s2BatTeamName },
+                ].filter(inn => inn.batTeam);
 
-                return innings.map(inn => {
-                  // Batters: same sb AND same batting_team_id, sorted by sort_order
+                if (inningsList.length === 0) {
+                  return <div className="ls-empty">Score data syncing — check back shortly</div>;
+                }
+
+                return inningsList.map(inn => {
                   const batters = scores
-                    .filter(s => s.scoreboard === inn.sb && s.batting_team_id === inn.battingTeamId && s.balls_faced > 0)
+                    .filter(s => s.scoreboard === inn.sb && s.team === inn.batTeam && s.balls_faced > 0)
                     .sort((a,b) => (a.sort_order||99) - (b.sort_order||99));
 
-                  // Bowlers: same scoreboard, have overs, and their player team != batting team
                   const bowlers = scores
-                    .filter(s => {
-                      if (s.scoreboard !== inn.sb) return false;
-                      if (!s.overs_bowled || s.overs_bowled <= 0) return false;
-                      // Bowler's team is their player.team — must be different from batting team name
-                      return s.team !== battingTeamName;
-                    })
+                    .filter(s => s.scoreboard === inn.sb && s.overs_bowled > 0 && s.team !== inn.batTeam)
                     .sort((a,b) => (b.wickets||0) - (a.wickets||0));
 
-                  // Team names from player data
-                  const battingTeamName = batters[0]?.team || '';
                   const bowlingTeamName = bowlers[0]?.team || '';
-
-                  // Innings score from live_score
                   const inningScore = liveScoreData.find(s => s.inning === inn.num);
                   const scoreText = inningScore ? `${inningScore.r}/${inningScore.w} (${inningScore.o} ov)` : '';
 
@@ -423,50 +415,46 @@ export default function LiveScorePage() {
                           <span style={{fontSize:'0.7rem',color:'var(--color-text-secondary)',display:'block',marginBottom:2}}>
                             {inn.num}{inn.num===1?'st':inn.num===2?'nd':'rd'} INNINGS
                           </span>
-                          <span className="ls-innings-team">{battingTeamName}</span>
+                          <span className="ls-innings-team">{inn.batTeam}</span>
                         </div>
                         <span className="ls-innings-score">{scoreText}</span>
                       </div>
 
-                      {batters.length > 0 && (
-                        <>
-                          <div className="ls-sc-section">Batting</div>
-                          <table className="ls-sc-table">
-                            <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
-                            <tbody>
-                              {batters.map(p => (
-                                <tr key={p.player_id} style={{opacity: isOut(p) ? 0.55 : 1}}>
-                                  <td>{p.is_active ? <strong>{p.name} *</strong> : p.name}</td>
-                                  <td className={p.runs>=50?'ls-highlight':''}>{p.runs||0}</td>
-                                  <td style={{color:'var(--color-text-secondary)'}}>{p.balls_faced||0}</td>
-                                  <td>{p.fours||0}</td>
-                                  <td>{p.sixes||0}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </>
-                      )}
+                      {batters.length > 0 && (<>
+                        <div className="ls-sc-section">Batting</div>
+                        <table className="ls-sc-table">
+                          <thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead>
+                          <tbody>
+                            {batters.map(p => (
+                              <tr key={p.player_id} style={{opacity: isOut(p) ? 0.55 : 1}}>
+                                <td>{p.is_active ? <strong>{p.name} *</strong> : p.name}</td>
+                                <td className={p.runs>=50?'ls-highlight':''}>{p.runs||0}</td>
+                                <td style={{color:'var(--color-text-secondary)'}}>{p.balls_faced||0}</td>
+                                <td>{p.fours||0}</td>
+                                <td>{p.sixes||0}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </>)}
 
-                      {bowlers.length > 0 && (
-                        <>
-                          <div className="ls-sc-section" style={{marginTop:12}}>{bowlingTeamName} Bowling</div>
-                          <table className="ls-sc-table">
-                            <thead><tr><th>Bowler</th><th>O</th><th>W</th><th>R</th><th>Eco</th></tr></thead>
-                            <tbody>
-                              {bowlers.map(p => (
-                                <tr key={p.player_id}>
-                                  <td>{p.name}</td>
-                                  <td>{p.overs_bowled||0}</td>
-                                  <td className={p.wickets>0?'ls-highlight':''}>{p.wickets||0}</td>
-                                  <td>{p.runs_conceded||0}</td>
-                                  <td>{p.overs_bowled>0?(p.runs_conceded/p.overs_bowled).toFixed(1):'-'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </>
-                      )}
+                      {bowlers.length > 0 && (<>
+                        <div className="ls-sc-section" style={{marginTop:12}}>{bowlingTeamName} Bowling</div>
+                        <table className="ls-sc-table">
+                          <thead><tr><th>Bowler</th><th>O</th><th>W</th><th>R</th><th>Eco</th></tr></thead>
+                          <tbody>
+                            {bowlers.map(p => (
+                              <tr key={p.player_id}>
+                                <td>{p.name}</td>
+                                <td>{p.overs_bowled||0}</td>
+                                <td className={p.wickets>0?'ls-highlight':''}>{p.wickets||0}</td>
+                                <td>{p.runs_conceded||0}</td>
+                                <td>{p.overs_bowled>0?(p.runs_conceded/p.overs_bowled).toFixed(1):'-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </>)}
                     </div>
                   );
                 });
