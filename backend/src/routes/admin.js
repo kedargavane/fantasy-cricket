@@ -375,7 +375,7 @@ router.get('/push-status', requireAuth, (req, res) => {
     SELECT 
       u.name, u.email,
       COUNT(ps.id) as sub_count,
-      MAX(ps.updated_at) as last_registered
+      MAX(ps.created_at) as last_registered
     FROM users u
     LEFT JOIN push_subscriptions ps ON ps.user_id = u.id
     GROUP BY u.id
