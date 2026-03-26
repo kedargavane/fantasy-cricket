@@ -375,8 +375,7 @@ router.get('/push-status', requireAuth, (req, res) => {
     SELECT 
       u.name, u.email,
       COUNT(ps.id) as sub_count,
-      MAX(ps.updated_at) as last_registered,
-      ps.user_agent
+      MAX(ps.updated_at) as last_registered
     FROM users u
     LEFT JOIN push_subscriptions ps ON ps.user_id = u.id
     GROUP BY u.id
@@ -398,19 +397,19 @@ router.post('/push-test', requireAuth, async (req, res) => {
   for (const sub of subs) {
     try {
       await webpush.sendNotification(
-        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh_key, auth: sub.auth_key } },
         JSON.stringify({ title: '🏏 Test notification', body: 'Push notifications are working!' })
       );
       sent++;
     } catch(e) {
       failed++;
-      // Remove expired subscriptions
-      if (e.statusCode === 410) {
+      console.error('[push-test] error:', e.statusCode, e.message);
+      if (e.statusCode === 410 || e.statusCode === 404) {
         db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(sub.id);
       }
     }
   }
-  return res.json({ sent, failed, total: subs.length });
+  return res.json({ sent, failed, total: subs.length, vapidConfigured: !!(process.env.VAPID_PUBLIC_KEY) });
 });
 
 // ── POST /api/admin/seasons/:seasonId/sync-venues ───────────────────────────
