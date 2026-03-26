@@ -227,19 +227,32 @@ export default function LiveScorePage() {
           ? <Spinner center />
           : <>
               {(() => {
-                const swappedInIds = new Set((viewTeam.swaps||[]).map(s => s.swapped_in_player_id));
+                const swappedInIds  = new Set((viewTeam.swaps||[]).map(s => s.swapped_in_player_id));
                 const swappedOutIds = new Set((viewTeam.swaps||[]).map(s => s.swapped_out_player_id));
-                const mainPlayers = viewTeam.players.filter(p => !p.is_backup);
+
+                const mainPlayers   = viewTeam.players.filter(p => !p.is_backup);
                 const backupPlayers = viewTeam.players.filter(p => p.is_backup);
-                
+
+                // Sort mains: playing XI first (by pts desc), then non-playing (swapped out) at bottom
+                const sortedMains = [
+                  ...mainPlayers.filter(p => !swappedOutIds.has(p.id)).sort((a,b) => (b.fantasy_points||0)-(a.fantasy_points||0)),
+                  ...mainPlayers.filter(p => swappedOutIds.has(p.id)),
+                ];
+
+                // Sort backups: swapped-in first, then unused bench
+                const sortedBackups = [
+                  ...backupPlayers.filter(p => swappedInIds.has(p.id)).sort((a,b) => (b.fantasy_points||0)-(a.fantasy_points||0)),
+                  ...backupPlayers.filter(p => !swappedInIds.has(p.id)),
+                ];
+
                 return <>
-                  {mainPlayers.map(p => (
-                    <PlayerRow key={p.id} player={p} pts={p.fantasy_points} 
-                      role={p.role_in_team} isBackup={false} 
+                  {sortedMains.map(p => (
+                    <PlayerRow key={p.id} player={p} pts={p.fantasy_points}
+                      role={p.role_in_team} isBackup={false}
                       isPlaying={p.is_playing_xi}
                       swappedOut={swappedOutIds.has(p.id)} />
                   ))}
-                  {backupPlayers.map(p => (
+                  {sortedBackups.map(p => (
                     <PlayerRow key={p.id} player={p} pts={p.fantasy_points}
                       role={swappedInIds.has(p.id) ? p.role_in_team : null}
                       isBackup={!swappedInIds.has(p.id)}
@@ -889,7 +902,8 @@ function PlayerRow({ player, pts, role, isBackup, isPlaying, swappedIn, swappedO
         {role === 'vice_captain' && <span className="ls-badge ls-vc">V</span>}
         {swappedIn  && !role     && <span className="ls-badge" style={{background:'rgba(29,158,117,0.2)',color:'#1D9E75',fontSize:'0.6rem'}}>↑IN</span>}
         {swappedOut              && <span className="ls-badge" style={{background:'rgba(248,113,113,0.2)',color:'#f87171',fontSize:'0.6rem'}}>OUT</span>}
-        {!role && !swappedIn && !swappedOut && <span className="ls-badge-empty" />}
+        {isBackup && !swappedIn  && <span className="ls-badge" style={{background:'rgba(186,117,23,0.2)',color:'#cc8800',fontSize:'0.6rem'}}>B</span>}
+        {!role && !swappedIn && !swappedOut && !isBackup && <span className="ls-badge-empty" />}
         <div className="ls-player-info">
           <div style={{display:'flex',alignItems:'center',gap:5}}>
             {isPlaying === 1 || isPlaying === true ? 

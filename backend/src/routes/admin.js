@@ -367,6 +367,52 @@ router.post('/matches/:id/cleanup-squad', (req, res) => {
   return res.json({ message: `Merged ${merged} duplicate players`, merged });
 });
 
+// ── GET /api/admin/push-status ──────────────────────────────────────────────
+// Show who has push notifications enabled
+router.get('/push-status', requireAuth, (req, res) => {
+  const db = getDb();
+  const subs = db.prepare(`
+    SELECT 
+      u.name, u.email,
+      COUNT(ps.id) as sub_count,
+      MAX(ps.updated_at) as last_registered,
+      ps.user_agent
+    FROM users u
+    LEFT JOIN push_subscriptions ps ON ps.user_id = u.id
+    GROUP BY u.id
+    ORDER BY sub_count DESC, u.name ASC
+  `).all();
+  
+  const vapidConfigured = !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+  return res.json({ vapidConfigured, users: subs });
+});
+
+// ── POST /api/admin/push-test ─────────────────────────────────────────────
+// Send a test push notification to all subscribers
+router.post('/push-test', requireAuth, async (req, res) => {
+  const db = getDb();
+  const webpush = require('web-push');
+  const subs = db.prepare('SELECT * FROM push_subscriptions').all();
+  
+  let sent = 0, failed = 0;
+  for (const sub of subs) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        JSON.stringify({ title: '🏏 Test notification', body: 'Push notifications are working!' })
+      );
+      sent++;
+    } catch(e) {
+      failed++;
+      // Remove expired subscriptions
+      if (e.statusCode === 410) {
+        db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(sub.id);
+      }
+    }
+  }
+  return res.json({ sent, failed, total: subs.length });
+});
+
 // ── POST /api/admin/seasons/:seasonId/sync-venues ───────────────────────────
 // Fetch venue info for all matches in a season
 router.post('/seasons/:seasonId/sync-venues', async (req, res) => {
