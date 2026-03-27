@@ -28,9 +28,11 @@ export function AuthProvider({ children }) {
       setSeasons(data.seasons || []);
       localStorage.setItem('fc_user', JSON.stringify(data.user));
 
-      // Restore or default active season
+      // Restore or default active season — prefer saved, then latest (highest ID)
       const savedSeasonId = localStorage.getItem('fc_season');
-      const found = data.seasons.find(s => s.id === parseInt(savedSeasonId)) || data.seasons[0];
+      const allSeasons = data.seasons || [];
+      const latest = allSeasons.reduce((a, b) => (b.id > a.id ? b : a), allSeasons[0] || null);
+      const found = allSeasons.find(s => s.id === parseInt(savedSeasonId)) || latest;
       if (found) setActiveSeason(found);
     } catch {
       // Token invalid — clear
