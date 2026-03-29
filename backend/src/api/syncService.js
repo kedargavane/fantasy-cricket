@@ -128,8 +128,9 @@ function upsertStats(matchId, playerStats) {
        overs_bowled, wickets, runs_conceded, maidens,
        catches, stumpings, run_outs, fantasy_points,
        bowler_name, catcher_name, runout_name, scoreboard, sort_order, is_active, batting_team_id, match_team,
+       bowler_dismissal_bonus,
        updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(match_id, player_id) DO UPDATE SET
       runs           = excluded.runs,
       balls_faced    = excluded.balls_faced,
@@ -151,6 +152,7 @@ function upsertStats(matchId, playerStats) {
       scoreboard     = excluded.scoreboard,
       sort_order     = excluded.sort_order,
       is_active      = excluded.is_active,
+      bowler_dismissal_bonus = excluded.bowler_dismissal_bonus,
       updated_at     = datetime('now')
   `);
 
@@ -227,7 +229,8 @@ function upsertStats(matchId, playerStats) {
         stat.sortOrder || 99,
         stat.active ? 1 : 0,
         (stat.battingTeamId != null && stat.battingTeamId !== undefined) ? stat.battingTeamId : null,
-        stat.team || null
+        stat.team || null,
+        stat.bowlerDismissalType ? 8 : 0
       );
     }
   });
@@ -295,19 +298,20 @@ function recomputeTeamPoints(matchId) {
         const role = player_id === captainId ? 'captain' : player_id === vcId ? 'vice_captain' : 'normal';
         const { total } = calculateFantasyPoints(
           {
-            isPlayingXi:   true,
-            runs:          stats.runs,
-            ballsFaced:    stats.balls_faced,
-            fours:         stats.fours,
-            sixes:         stats.sixes,
-            dismissalType: stats.dismissal_type,
-            oversBowled:   stats.overs_bowled,
-            wickets:       stats.wickets,
-            runsConceded:  stats.runs_conceded,
-            maidens:       stats.maidens,
-            catches:       stats.catches,
-            stumpings:     stats.stumpings,
-            runOuts:       stats.run_outs,
+            isPlayingXi:          true,
+            runs:                 stats.runs,
+            ballsFaced:           stats.balls_faced,
+            fours:                stats.fours,
+            sixes:                stats.sixes,
+            dismissalType:        stats.dismissal_type,
+            oversBowled:          stats.overs_bowled,
+            wickets:              stats.wickets,
+            runsConceded:         stats.runs_conceded,
+            maidens:              stats.maidens,
+            catches:              stats.catches,
+            stumpings:            stats.stumpings,
+            runOuts:              stats.run_outs,
+            bowlerDismissalType:  stats.bowler_dismissal_bonus > 0 ? 'bowled' : null,
           },
           role,
           DEFAULT_SCORING_CONFIG

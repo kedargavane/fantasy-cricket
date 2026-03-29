@@ -198,6 +198,27 @@ async function fetchFixtureScorecard(fixtureId) {
     p.bowlerId     = b.bowling_player_id   || null;
     p.catcherId    = b.catch_stump_player_id || null;
 
+    // Increment fielding stats on the fielder
+    // wicket_id 2=caught, 79=caught&bowled, 84=caught
+    const isCatch   = [2, 79, 84].includes(b.wicket_id);
+    // wicket_id 5=stumped
+    const isStumped = b.wicket_id === 5;
+    // wicket_id 4=run out
+    const isRunOut  = b.wicket_id === 4;
+
+    if (isCatch && catcherId) {
+      const fielder = ensurePlayer(catcherId, b.team_id === localTeamId ? visitorTeamId : localTeamId);
+      fielder.catches += 1;
+    }
+    if (isStumped && b.catch_stump_player_id) {
+      const wk = ensurePlayer(b.catch_stump_player_id, b.team_id === localTeamId ? visitorTeamId : localTeamId);
+      wk.stumpings += 1;
+    }
+    if (isRunOut && b.runout_by_id) {
+      const fielder = ensurePlayer(b.runout_by_id, b.team_id === localTeamId ? visitorTeamId : localTeamId);
+      fielder.runOuts += 1;
+    }
+
     // LBW/bowled bonus
     if ((p.dismissalType === 'lbw' || p.dismissalType === 'bowled') && b.bowling_player_id) {
       const bowlerPid = b.bowling_player_id;
@@ -224,7 +245,14 @@ async function fetchFixtureScorecard(fixtureId) {
     p.maidens       = parseInt(b.maiden || b.medians || 0, 10);
   }
 
-  const playerStats = Object.values(statsMap);
+  const playerStats = Object.values(statsMap).map(stat => {
+    // Resolve bowlerDismissalType for LBW/bowled bonus in scoring engine
+    if (stat.bowlerDismissals && stat.bowlerDismissals.length > 0) {
+      stat.bowlerDismissalType = stat.bowlerDismissals[0];
+    }
+    delete stat.bowlerDismissals;
+    return stat;
+  });
   return { matchInfo, playerStats };
 }
 
