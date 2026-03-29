@@ -108,7 +108,13 @@ router.get('/match/:matchId/result', requireAuth, (req, res) => {
     JOIN users u    ON u.id   = ut.user_id
     JOIN players cp  ON cp.id  = COALESCE(ut.resolved_captain_id, ut.captain_id)
     JOIN players vcp ON vcp.id = COALESCE(ut.resolved_vice_captain_id, ut.vice_captain_id)
-    LEFT JOIN prize_distributions pd ON pd.user_team_id = ut.id
+    LEFT JOIN (
+      SELECT user_team_id, gross_units, net_units, rank
+      FROM prize_distributions
+      WHERE id IN (
+        SELECT MAX(id) FROM prize_distributions GROUP BY user_team_id
+      )
+    ) pd ON pd.user_team_id = ut.id
     WHERE ut.match_id = ?
     ORDER BY ut.total_fantasy_points DESC
   `).all(matchId);
