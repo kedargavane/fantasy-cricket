@@ -73,6 +73,8 @@ function finaliseMatch(matchId) {
     // Clear existing distributions for this pool (re-finalise case)
     db.prepare('DELETE FROM prize_distributions WHERE match_prize_pool_id = ?').run(poolId);
     for (const prize of prizes) {
+      const teamExists = db.prepare('SELECT id FROM user_teams WHERE id = ?').get(prize.userId);
+      if (!teamExists) throw new Error(`user_team ${prize.userId} not found in user_teams`);
       insertPrize.run(poolId, prize.userId, prize.rank, prize.grossUnits, prize.netUnits, prize.fantasyPoints);
       updateTeam.run(prize.rank, prize.grossUnits, prize.userId);
     }
