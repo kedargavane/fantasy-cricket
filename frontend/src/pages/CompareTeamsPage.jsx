@@ -215,7 +215,8 @@ function PlayerCell({ player, side, swappedIn, swappedOut }) {
   const isVC      = player.role_in_team === 'vice_captain';
   const isXI      = player.is_playing_xi === 1;
   const pts       = player.effective_pts || 0;
-  const shortName = player.name.split(' ').slice(-1)[0];
+  const parts = (player.name || '').split(' ');
+  const shortName = parts.length === 1 ? parts[0] : parts[0] + ' ' + parts[parts.length - 1][0] + '.';
 
   function Badge() {
     if (swappedIn)  return <span style={{fontSize:'0.55rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(29,158,117,0.2)',color:'#1D9E75',whiteSpace:'nowrap'}}>↑IN</span>;
