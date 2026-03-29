@@ -779,36 +779,73 @@ function finaliseMatch(db, matchId, seasonId) {
 }
 
 function updateSeasonLeaderboard(db, matchId, seasonId, prizes, entryUnits) {
-  const updateLeaderboard = db.prepare(`
-    INSERT INTO season_leaderboard (season_id, user_id, total_fantasy_points, total_units_won, net_units, matches_played, top_finishes, updated_at)
-    VALUES (?, ?, ?, ?, ?, 1, ?, datetime('now'))
+  // Rebuild entire season leaderboard from scratch to avoid double-counting on re-finalise
+  // Get all finalised matches in this season
+  const seasonMatches = db.prepare(`
+    SELECT id FROM matches WHERE season_id = ? AND status = 'completed'
+  `).all(seasonId).map(m => m.id);
+
+  // Get all prize distributions for all completed matches in season
+  const allPrizes = db.prepare(`
+    SELECT pd.*, ut.user_id, ut.match_id
+    FROM prize_distributions pd
+    JOIN user_teams ut ON ut.id = pd.user_team_id
+    WHERE ut.match_id IN (${seasonMatches.map(() => '?').join(',')})
+  `).all(...seasonMatches);
+
+  // Get entry units per match
+  const entryUnitsMap = {};
+  for (const mid of seasonMatches) {
+    const mc = db.prepare('SELECT entry_units FROM match_config WHERE match_id = ?').get(mid);
+    entryUnitsMap[mid] = mc ? mc.entry_units : 300;
+  }
+
+  // Aggregate per user
+  const userStats = {};
+  for (const p of allPrizes) {
+    if (!userStats[p.user_id]) {
+      userStats[p.user_id] = {
+        total_fantasy_points: 0,
+        total_units_won: 0,
+        net_units: 0,
+        matches_played: 0,
+        top_finishes: 0,
+      };
+    }
+    const eu = entryUnitsMap[p.match_id] || 300;
+    userStats[p.user_id].total_fantasy_points += p.fantasy_points || 0;
+    userStats[p.user_id].total_units_won      += p.gross_units || 0;
+    userStats[p.user_id].net_units            += (p.net_units || 0);
+    userStats[p.user_id].matches_played       += 1;
+    userStats[p.user_id].top_finishes         += p.gross_units > 0 ? 1 : 0;
+  }
+
+  const upsert = db.prepare(`
+    INSERT INTO season_leaderboard
+      (season_id, user_id, total_fantasy_points, total_units_won, net_units, matches_played, top_finishes, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(season_id, user_id) DO UPDATE SET
-      total_fantasy_points = total_fantasy_points + excluded.total_fantasy_points,
-      total_units_won      = total_units_won + excluded.total_units_won,
-      net_units            = net_units + excluded.net_units,
-      matches_played       = matches_played + 1,
-      top_finishes         = top_finishes + excluded.top_finishes,
+      total_fantasy_points = excluded.total_fantasy_points,
+      total_units_won      = excluded.total_units_won,
+      net_units            = excluded.net_units,
+      matches_played       = excluded.matches_played,
+      top_finishes         = excluded.top_finishes,
       updated_at           = datetime('now')
   `);
 
-  const updateAll = db.transaction(() => {
-    for (const prize of prizes) {
-      // Get the user_id from the user_team
-      const userTeam = db.prepare('SELECT user_id FROM user_teams WHERE id = ?').get(prize.userId);
-      if (!userTeam) continue;
-
-      const isTopFinish = prize.grossUnits > 0 ? 1 : 0;
-      updateLeaderboard.run(
-        seasonId, userTeam.user_id,
-        prize.fantasyPoints,
-        prize.grossUnits,
-        prize.netUnits,
-        isTopFinish
+  const rebuild = db.transaction(() => {
+    for (const [userId, stats] of Object.entries(userStats)) {
+      upsert.run(
+        seasonId, parseInt(userId),
+        stats.total_fantasy_points,
+        stats.total_units_won,
+        stats.net_units,
+        stats.matches_played,
+        stats.top_finishes
       );
     }
   });
-
-  updateAll();
+  rebuild();
 }
 
 async function sendResultNotifications(db, matchId, prizes) {
