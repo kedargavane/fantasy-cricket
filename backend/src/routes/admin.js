@@ -367,6 +367,94 @@ router.post('/matches/:id/cleanup-squad', (req, res) => {
   return res.json({ message: `Merged ${merged} duplicate players`, merged });
 });
 
+// ── POST /api/admin/seasons/:seasonId/rebuild-standings ─────────────────────
+// Wipes and rebuilds season leaderboard from prize_distributions (deduped)
+router.post('/seasons/:seasonId/rebuild-standings', requireAuth, (req, res) => {
+  const db = getDb();
+  const seasonId = parseInt(req.params.seasonId, 10);
+
+  try {
+    // For each completed match, keep only the latest prize distribution set
+    const matches = db.prepare(
+      "SELECT id FROM matches WHERE season_id = ? AND status = 'completed'"
+    ).all(seasonId);
+
+    const dedup = db.transaction(() => {
+      for (const match of matches) {
+        // Get the prize pool for this match
+        const pool = db.prepare(
+          'SELECT id FROM match_prize_pools WHERE match_id = ?'
+        ).get(match.id);
+        if (!pool) continue;
+
+        // Keep only one set of distributions per user_team (delete dupes)
+        const teams = db.prepare(
+          'SELECT DISTINCT user_team_id FROM prize_distributions WHERE match_prize_pool_id = ?'
+        ).all(pool.id);
+
+        for (const t of teams) {
+          // Keep the latest row, delete the rest
+          const rows = db.prepare(
+            'SELECT id FROM prize_distributions WHERE match_prize_pool_id = ? AND user_team_id = ? ORDER BY id DESC'
+          ).all(pool.id, t.user_team_id);
+          // Delete all except the first (latest)
+          for (let i = 1; i < rows.length; i++) {
+            db.prepare('DELETE FROM prize_distributions WHERE id = ?').run(rows[i].id);
+          }
+        }
+      }
+    });
+    dedup();
+
+    // Now rebuild season leaderboard from clean prize_distributions
+    const seasonMatchIds = matches.map(m => m.id);
+    if (seasonMatchIds.length === 0) return res.json({ ok: true, message: 'No completed matches' });
+
+    const allPrizes = db.prepare(`
+      SELECT pd.fantasy_points, pd.gross_units, pd.net_units, ut.user_id, ut.match_id
+      FROM prize_distributions pd
+      JOIN user_teams ut ON ut.id = pd.user_team_id
+      WHERE ut.match_id IN (${seasonMatchIds.map(() => '?').join(',')})
+    `).all(...seasonMatchIds);
+
+    const userStats = {};
+    for (const p of allPrizes) {
+      if (!userStats[p.user_id]) {
+        userStats[p.user_id] = { pts: 0, won: 0, net: 0, played: 0, top: 0 };
+      }
+      userStats[p.user_id].pts    += p.fantasy_points || 0;
+      userStats[p.user_id].won    += p.gross_units || 0;
+      userStats[p.user_id].net    += p.net_units || 0;
+      userStats[p.user_id].played += 1;
+      userStats[p.user_id].top    += p.gross_units > 0 ? 1 : 0;
+    }
+
+    const upsert = db.prepare(`
+      INSERT INTO season_leaderboard
+        (season_id, user_id, total_fantasy_points, total_units_won, net_units, matches_played, top_finishes, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(season_id, user_id) DO UPDATE SET
+        total_fantasy_points = excluded.total_fantasy_points,
+        total_units_won      = excluded.total_units_won,
+        net_units            = excluded.net_units,
+        matches_played       = excluded.matches_played,
+        top_finishes         = excluded.top_finishes,
+        updated_at           = datetime('now')
+    `);
+
+    const rebuild = db.transaction(() => {
+      for (const [userId, s] of Object.entries(userStats)) {
+        upsert.run(seasonId, parseInt(userId), s.pts, s.won, s.net, s.played, s.top);
+      }
+    });
+    rebuild();
+
+    return res.json({ ok: true, users: Object.keys(userStats).length, matches: seasonMatchIds.length });
+  } catch(e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // ── POST /api/admin/seasons/:seasonId/sync-venues ───────────────────────────
 // Fetch venue info for all matches in a season
 router.post('/seasons/:seasonId/sync-venues', async (req, res) => {
