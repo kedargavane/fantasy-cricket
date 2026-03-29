@@ -325,6 +325,7 @@ function runMigrations(db) {
   try { db.exec('ALTER TABLE matches ADD COLUMN toss_info TEXT DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN scorecard_json TEXT DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN venue_info TEXT DEFAULT NULL'); } catch {}
+  try { db.exec('ALTER TABLE match_squads ADD COLUMN is_substitute INTEGER NOT NULL DEFAULT 0'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN sportmonks_season_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN localteam_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN visitorteam_id INTEGER DEFAULT NULL'); } catch {}

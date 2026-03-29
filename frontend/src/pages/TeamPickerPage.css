@@ -112,6 +112,7 @@
 .prow-left  { display: flex; align-items: center; gap: 5px; min-width: 0; flex: 1; overflow: hidden; }
 .pip        { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .pip-xi-sm  { background: #22c55e; }
+.pip-sub-sm { background: #f5a623; }
 .pip-empty  { background: transparent; border: 1px solid var(--border); }
 
 .prow-info  { display: flex; flex-direction: column; min-width: 0; gap: 1px; }

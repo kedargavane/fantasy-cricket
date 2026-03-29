@@ -94,11 +94,11 @@ router.get('/:id/squad', requireAuth, (req, res) => {
   const squad = db.prepare(`
     SELECT
       p.id, p.name, p.team, p.role, p.external_player_id,
-      ms.is_playing_xi
+      ms.is_playing_xi, ms.is_substitute
     FROM match_squads ms
     JOIN players p ON p.id = ms.player_id
     WHERE ms.match_id = ?
-    ORDER BY p.team, ms.is_playing_xi DESC, p.name
+    ORDER BY p.team, ms.is_playing_xi DESC, ms.is_substitute ASC, p.name
   `).all(matchId);
 
   return res.json({ squad });

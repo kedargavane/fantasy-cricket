@@ -674,7 +674,7 @@ function InlineCompare({ data }) {
         {!right && (isCap ? <span style={{fontSize:'0.6rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(186,117,23,0.2)',color:'#cc8800'}}>C</span>
           : isVC ? <span style={{fontSize:'0.6rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(0,188,212,0.2)',color:'#00bcd4'}}>V</span> : null)}
         {!right && isXI && <span style={{width:5,height:5,borderRadius:'50%',background:'#00E5FF',flexShrink:0}} />}
-        <span style={{fontSize:'0.78rem',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{player.name.split(' ').pop()}</span>
+        <span style={{fontSize:'0.78rem',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{player.name}</span>
         {right && isXI && <span style={{width:5,height:5,borderRadius:'50%',background:'#00E5FF',flexShrink:0}} />}
         {right && (isCap ? <span style={{fontSize:'0.6rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(186,117,23,0.2)',color:'#cc8800'}}>C</span>
           : isVC ? <span style={{fontSize:'0.6rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(0,188,212,0.2)',color:'#00bcd4'}}>V</span> : null)}

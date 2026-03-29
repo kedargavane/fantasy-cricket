@@ -282,8 +282,8 @@ function getTeamDetail(db, userTeamId, userId) {
       po.name as swapped_out_name,
       pi.name as swapped_in_name
     FROM user_team_swaps uts
-    JOIN players po ON po.id = uts.swapped_out_player_id
-    JOIN players pi ON pi.id = uts.swapped_in_player_id
+    LEFT JOIN players po ON po.id = uts.swapped_out_player_id
+    LEFT JOIN players pi ON pi.id = uts.swapped_in_player_id
     WHERE uts.user_team_id = ?
   `).all(userTeamId);
 

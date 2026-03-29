@@ -242,11 +242,12 @@ export default function TeamPickerPage() {
 
   if (loading) return <Spinner center />;
 
-  // Sort: XI confirmed first, then non-XI, within each group keep original order
+  // Sort: XI confirmed first, then substitutes, then non-XI
   function sortByXI(players) {
     const xi    = players.filter(p => p.is_playing_xi);
-    const nonXI = players.filter(p => !p.is_playing_xi);
-    return [...xi, ...nonXI];
+    const subs  = players.filter(p => !p.is_playing_xi && p.is_substitute);
+    const nonXI = players.filter(p => !p.is_playing_xi && !p.is_substitute);
+    return [...xi, ...subs, ...nonXI];
   }
 
   const colA = applyRoleFilter(sortByXI(playersA));
@@ -309,6 +310,7 @@ export default function TeamPickerPage() {
       {/* Legend */}
       <div className="picker-legend">
         <span className="leg-item"><span className="leg-pip pip-xi" />XI</span>
+        <span className="leg-item"><span className="leg-pip pip-sub-sm" style={{width:8,height:8,borderRadius:'50%',display:'inline-block',marginRight:4}} />Sub</span>
         <span className="leg-item"><span className="leg-pip pip-main" />Main</span>
         <span className="leg-item"><span className="leg-pip pip-bak" />Backup</span>
         <span className="leg-cap-item"><span className="leg-cap">C</span>2× &nbsp;<span className="leg-vc">VC</span>1.5×</span>
@@ -391,7 +393,7 @@ function PlayerRow({ p, mainIds, backupIds, captainId, vcId, mainCount, backupCo
   return (
     <div className={`prow ${isMain ? 'prow-main' : ''} ${isBak ? 'prow-bak' : ''} ${isCap ? 'prow-cap' : ''} ${isVc ? 'prow-vc' : ''}`}>
       <div className="prow-left">
-        <span className={`pip ${p.is_playing_xi ? 'pip-xi-sm' : 'pip-empty'}`} />
+        <span className={`pip ${p.is_playing_xi ? 'pip-xi-sm' : p.is_substitute ? 'pip-sub-sm' : 'pip-empty'}`} />
         <div className="prow-info">
           <span className="prow-name">{p.name}</span>
           <span className="prow-role">{normaliseRole(p.role)}</span>

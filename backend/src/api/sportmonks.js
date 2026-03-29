@@ -248,10 +248,16 @@ async function fetchSquadByTeamAndSeason(teamId, smSeasonId) {
 async function fetchFixtureLineup(fixtureId) {
   const data = await smGet(`fixtures/${fixtureId}`, { include: 'lineup' });
   const lineup = data.data?.lineup || [];
+
+  // IPL has 16 per side (11 playing XI + 5 impact player substitutes)
+  // substitution: false = playing XI, substitution: true = impact player substitute
+  const hasSubstitutionData = lineup.some(p => p.lineup?.substitution === false);
+
   return lineup.map(p => ({
     externalPlayerId: String(p.id || p.player_id),
     teamId:           p.lineup?.team_id || p.team_id,
-    isPlayingXi:      true,
+    isSubstitute:     hasSubstitutionData ? (p.lineup?.substitution === true) : false,
+    isPlayingXi:      hasSubstitutionData ? (p.lineup?.substitution === false) : true,
   }));
 }
 
