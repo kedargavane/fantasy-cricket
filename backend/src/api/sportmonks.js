@@ -206,26 +206,27 @@ async function fetchFixtureScorecard(fixtureId) {
     const hasRunout   = !!(b.runout_by_id);
     const wicketId    = b.wicket_id;
 
-    // Catch: has catcher + bowler (or c&b: wicket_id 79)
-    const isCatch   = (hasFielder && hasBowler) ||
-                      [2, 79, 84].includes(wicketId);
+    // Stumping: wicket_id 5 or 55
+    const isStumped = wicketId === 5 || wicketId === 55;
 
-    // Stumping: has fielder but batsmanout_id suggests keeper (heuristic)
-    // Use wicket_id 5 if available, otherwise no way to distinguish catch from stumping
-    // — default to catch if wicket_id is unreliable (54)
-    const isStumped = wicketId === 5;
+    // Run out: wicket_id 4 or 63, OR has runout_by_id
+    // For IPL wicket_id 63 = run out, fielder stored in catch_stump_player_id
+    const isRunOut  = hasRunout || wicketId === 4 || wicketId === 63;
 
-    // Run out: has runout_by_id
-    const isRunOut  = hasRunout || wicketId === 4;
+    // Catch: has catcher + bowler, or c&b (79), or caught wicket IDs
+    // But NOT if it's a stumping or run out
+    const isCatch   = !isStumped && !isRunOut && (
+                      (hasFielder && hasBowler) ||
+                      [2, 79, 84].includes(wicketId)
+                    );
 
-    // LBW/bowled: has bowler but NO catcher (pure bowling dismissal)
-    const isBowledOrLbw = hasBowler && !hasFielder && !hasRunout &&
+    // LBW/bowled: has bowler but NO catcher and NOT runout/stumped
+    const isBowledOrLbw = !isStumped && !isRunOut && !isCatch &&
+                          hasBowler && !hasFielder &&
                           (wicketId === 1 || wicketId === 3 || wicketId === 83 ||
-                           // For IPL where wicket_id=54 is unreliable:
-                           // if bowler set but no catcher/runout — likely bowled/lbw
                            wicketId === 54);
 
-    if (isCatch && !isStumped && catcherId) {
+    if (isCatch && catcherId) {
       const fielder = ensurePlayer(catcherId, b.team_id === localTeamId ? visitorTeamId : localTeamId);
       fielder.catches += 1;
     }
@@ -233,9 +234,13 @@ async function fetchFixtureScorecard(fixtureId) {
       const wk = ensurePlayer(b.catch_stump_player_id, b.team_id === localTeamId ? visitorTeamId : localTeamId);
       wk.stumpings += 1;
     }
-    if (isRunOut && b.runout_by_id) {
-      const fielder = ensurePlayer(b.runout_by_id, b.team_id === localTeamId ? visitorTeamId : localTeamId);
-      fielder.runOuts += 1;
+    if (isRunOut) {
+      // Run out fielder: use runout_by_id if available, else catch_stump_player_id
+      const runoutFielderId = b.runout_by_id || (wicketId === 63 ? b.catch_stump_player_id : null);
+      if (runoutFielderId) {
+        const fielder = ensurePlayer(runoutFielderId, b.team_id === localTeamId ? visitorTeamId : localTeamId);
+        fielder.runOuts += 1;
+      }
     }
 
     // LBW/bowled bonus to bowler

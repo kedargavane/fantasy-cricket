@@ -410,12 +410,18 @@ router.post('/seasons/:seasonId/rebuild-standings', requireAuth, (req, res) => {
     const seasonMatchIds = matches.map(m => m.id);
     if (seasonMatchIds.length === 0) return res.json({ ok: true, message: 'No completed matches' });
 
+    // Use MAX(id) per user_team to get only the latest distribution row
     const allPrizes = db.prepare(`
       SELECT pd.fantasy_points, pd.gross_units, pd.net_units, ut.user_id, ut.match_id
       FROM prize_distributions pd
       JOIN user_teams ut ON ut.id = pd.user_team_id
       WHERE ut.match_id IN (${seasonMatchIds.map(() => '?').join(',')})
-    `).all(...seasonMatchIds);
+      AND pd.id IN (
+        SELECT MAX(id) FROM prize_distributions
+        WHERE user_team_id IN (SELECT id FROM user_teams WHERE match_id IN (${seasonMatchIds.map(() => '?').join(',')}))
+        GROUP BY user_team_id
+      )
+    `).all(...seasonMatchIds, ...seasonMatchIds);
 
     const userStats = {};
     for (const p of allPrizes) {
