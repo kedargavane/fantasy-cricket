@@ -367,6 +367,37 @@ router.post('/matches/:id/cleanup-squad', (req, res) => {
   return res.json({ message: `Merged ${merged} duplicate players`, merged });
 });
 
+// ── POST /api/admin/matches/:id/reprocess-swaps ─────────────────────────────
+// Force re-process swaps for a match — resets swap_processed_at and re-runs
+router.post('/matches/:id/reprocess-swaps', async (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  try {
+    // Reset swap_processed_at so processAutoSwaps will re-run
+    db.prepare('UPDATE user_teams SET swap_processed_at = NULL WHERE match_id = ?').run(matchId);
+    // Clear existing swap records for this match
+    db.prepare(`
+      DELETE FROM user_team_swaps WHERE user_team_id IN
+      (SELECT id FROM user_teams WHERE match_id = ?)
+    `).run(matchId);
+
+    // Re-run swaps
+    const { processAutoSwaps } = require('../engines/swapEngine');
+    const count = processAutoSwaps(matchId);
+
+    // Recompute team points
+    const { recomputeTeamPoints } = require('../api/syncService');
+    recomputeTeamPoints(matchId);
+
+    return res.json({ ok: true, teamsProcessed: count });
+  } catch(e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // ── POST /api/admin/seasons/:seasonId/rebuild-standings ─────────────────────
 // Wipes and rebuilds season leaderboard from prize_distributions (deduped)
 router.post('/seasons/:seasonId/rebuild-standings', requireAuth, (req, res) => {

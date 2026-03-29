@@ -31,12 +31,6 @@ router.get('/season/:seasonId', requireAuth, (req, res) => {
     SELECT
       sl.*,
       u.name,
-      -- Season score = net_units / matches_played (avg profit per match)
-      CASE
-        WHEN sl.matches_played > 0
-        THEN ROUND(CAST(sl.net_units AS REAL) / sl.matches_played, 2)
-        ELSE 0
-      END as season_score,
       CASE
         WHEN sl.matches_played >= ? THEN 1
         ELSE 0
@@ -46,8 +40,8 @@ router.get('/season/:seasonId', requireAuth, (req, res) => {
     WHERE sl.season_id = ?
     ORDER BY
       is_eligible DESC,
-      season_score DESC,
       sl.net_units DESC,
+      sl.total_fantasy_points DESC,
       sl.top_finishes DESC
   `).all(minMatchesRequired, seasonId);
 
@@ -56,7 +50,7 @@ router.get('/season/:seasonId', requireAuth, (req, res) => {
   const result = leaderboard.map((entry, idx) => {
     if (entry.is_eligible) {
       if (idx > 0 && leaderboard[idx - 1].is_eligible &&
-          leaderboard[idx - 1].season_score === entry.season_score) {
+          leaderboard[idx - 1].net_units === entry.net_units) {
         entry.display_rank = leaderboard[idx - 1].display_rank;
       } else {
         entry.display_rank = rank;
