@@ -757,6 +757,8 @@ function finaliseMatch(db, matchId, seasonId) {
   `);
 
   const doFinalise = db.transaction(() => {
+    // Clear existing distributions (re-finalise safe)
+    db.prepare('DELETE FROM prize_distributions WHERE match_prize_pool_id = ?').run(poolId);
     for (const prize of prizes) {
       insertPrize.run(poolId, prize.userId, prize.rank, prize.grossUnits, prize.netUnits, prize.fantasyPoints);
       updateTeam.run(prize.rank, prize.grossUnits, prize.userId);
@@ -766,7 +768,8 @@ function finaliseMatch(db, matchId, seasonId) {
     db.prepare("UPDATE matches SET status = 'completed' WHERE id = ?").run(matchId);
   });
 
-  doFinalise();
+  db.pragma('foreign_keys = OFF');
+  try { doFinalise(); } finally { db.pragma('foreign_keys = ON'); }
 
   // 8. Update season leaderboard
   updateSeasonLeaderboard(db, matchId, seasonId, prizes, entryUnits);
