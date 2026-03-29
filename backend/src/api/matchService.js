@@ -80,7 +80,12 @@ function finaliseMatch(matchId) {
     }
     db.prepare("UPDATE matches SET status = 'completed' WHERE id = ?").run(matchId);
   });
-  doFinalise();
+  db.pragma('foreign_keys = OFF');
+  try {
+    doFinalise();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
 
   // 8. Update season leaderboard
   updateSeasonLeaderboard(db, matchId, seasonId, prizes, entryUnits);
