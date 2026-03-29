@@ -17,12 +17,20 @@ function finaliseMatch(matchId) {
   if (!match) throw new Error(`Match ${matchId} not found`);
   const seasonId = match.season_id;
 
-  // 1. Process auto-swaps
-  const { processAutoSwaps } = require('../engines/swapEngine');
-  processAutoSwaps(matchId);
+  // 1. Process auto-swaps (only for unprocessed teams)
+  try {
+    const { processAutoSwaps } = require('../engines/swapEngine');
+    processAutoSwaps(matchId);
+  } catch(e) {
+    throw new Error(`processAutoSwaps failed: ${e.message}`);
+  }
 
   // 2. Final recompute
-  recomputeTeamPoints(matchId);
+  try {
+    recomputeTeamPoints(matchId);
+  } catch(e) {
+    throw new Error(`recomputeTeamPoints failed: ${e.message}`);
+  }
 
   // 3. Entry units
   const matchConfig = db.prepare('SELECT entry_units FROM match_config WHERE match_id = ?').get(matchId);
@@ -83,6 +91,8 @@ function finaliseMatch(matchId) {
   db.pragma('foreign_keys = OFF');
   try {
     doFinalise();
+  } catch(e) {
+    throw new Error(`doFinalise failed: ${e.message}`);
   } finally {
     db.pragma('foreign_keys = ON');
   }
