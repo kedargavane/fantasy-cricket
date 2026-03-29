@@ -1029,7 +1029,7 @@ router.delete('/users/:id', (req, res) => {
 });
 
 // ── POST /api/admin/matches/:id/sync-xi ──────────────────────────────────────
-// Manually trigger Playing XI sync from CricAPI
+// Manually trigger Playing XI sync from Sportmonks
 router.post('/matches/:id/sync-xi', async (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.id, 10);
@@ -1037,9 +1037,14 @@ router.post('/matches/:id/sync-xi', async (req, res) => {
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
 
+  const fixtureId = match.sportmonks_fixture_id ||
+    (match.external_match_id?.startsWith('sm-') ? parseInt(match.external_match_id.replace('sm-', '')) : null);
+
+  if (!fixtureId) return res.status(422).json({ error: 'No Sportmonks fixture ID for this match' });
+
   try {
     const { syncPlayingXi } = require('../api/syncService');
-    const result = await syncPlayingXi(matchId, match.external_match_id);
+    const result = await syncPlayingXi(matchId, fixtureId);
     return res.json(result);
   } catch (err) {
     return res.status(500).json({ error: err.message });
