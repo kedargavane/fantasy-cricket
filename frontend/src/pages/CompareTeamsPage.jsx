@@ -215,7 +215,7 @@ function PlayerCell({ player, side, swappedIn, swappedOut }) {
   const isVC      = player.role_in_team === 'vice_captain';
   const isXI      = player.is_playing_xi === 1;
   const pts       = player.effective_pts || 0;
-  const parts = (player.name || '').split(' ');
+  const parts     = (player.name || '').split(' ');
   const shortName = parts.length === 1 ? parts[0] : parts[0] + ' ' + parts[parts.length - 1][0] + '.';
 
   function Badge() {
