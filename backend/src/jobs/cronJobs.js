@@ -52,7 +52,7 @@ function startCronJobs(io) {
               
               const webpush = require('web-push');
               const subs = db2.prepare(`
-                SELECT ps.endpoint, ps.p256dh, ps.auth FROM push_subscriptions ps
+                SELECT ps.endpoint, ps.p256dh_key, ps.auth_key FROM push_subscriptions ps
                 JOIN season_memberships sm ON sm.user_id = ps.user_id
                 WHERE sm.season_id = ?
               `).all(matchRow.season_id);
@@ -62,7 +62,7 @@ function startCronJobs(io) {
                 body: scoreText || 'Innings over! Check the leaderboard.',
               });
               for (const sub of subs) {
-                webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload).catch(() => {});
+                webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh_key, auth: sub.auth_key } }, payload).catch(() => {});
               }
               console.log(`[notify] Innings break for match ${match.id}: ${subs.length} users`);
             } catch (e) { console.error('[notify] innings break error:', e.message); }
@@ -203,7 +203,7 @@ function startCronJobs(io) {
               const db2 = getDb();
               const matchRow = db2.prepare('SELECT team_a, team_b, season_id, start_time FROM matches WHERE id = ?').get(match.id);
               const subs = db2.prepare(`
-                SELECT ps.endpoint, ps.p256dh, ps.auth FROM push_subscriptions ps
+                SELECT ps.endpoint, ps.p256dh_key, ps.auth_key FROM push_subscriptions ps
                 JOIN season_memberships sm ON sm.user_id = ps.user_id
                 WHERE sm.season_id = ?
               `).all(matchRow.season_id);
@@ -213,7 +213,7 @@ function startCronJobs(io) {
                 body: `${matchRow.team_a} vs ${matchRow.team_b} — Update your team before ${startTime} IST`,
               });
               for (const sub of subs) {
-                webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload).catch(() => {});
+                webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh_key, auth: sub.auth_key } }, payload).catch(() => {});
               }
               console.log(`[notify] XI confirmed for match ${match.id}: ${subs.length} users`);
             } catch (e) { console.error('[notify] XI error:', e.message); }

@@ -152,7 +152,7 @@ async function sendResultNotifications(db, matchId, prizes) {
     });
     for (const sub of subs) {
       webpush.sendNotification(
-        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh_key, auth: sub.auth_key } },
         payload
       ).catch(() => {});
     }
