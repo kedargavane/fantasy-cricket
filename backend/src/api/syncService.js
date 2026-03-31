@@ -95,8 +95,45 @@ async function syncPlayingXi(matchId, sportmonksFixtureId) {
   });
   insertXi();
 
-  await processAutoSwaps(matchId);
+  const { swapResults } = await processAutoSwaps(matchId);
   recomputeTeamPoints(matchId);
+
+  // Send swap notifications
+  try {
+    const webpush = require('web-push');
+    const match = db.prepare('SELECT team_a, team_b FROM matches WHERE id = ?').get(matchId);
+    for (const result of (swapResults || [])) {
+      const subs = db.prepare(
+        'SELECT * FROM push_subscriptions WHERE user_id = ?'
+      ).all(result.userId);
+      if (!subs.length) continue;
+
+      let body;
+      if (result.swaps.length > 0) {
+        const swapText = result.swaps.map(s => `${s.out} → ${s.in}`).join(', ');
+        body = `Auto-swap applied: ${swapText}`;
+      } else {
+        body = `All your players are in the XI — no swap needed!`;
+      }
+
+      const payload = JSON.stringify({
+        title: `🔄 ${match.team_a} vs ${match.team_b} — Team Update`,
+        body,
+        type: 'swap_update',
+        matchId,
+      });
+
+      for (const sub of subs) {
+        webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh_key, auth: sub.auth_key } },
+          payload
+        ).catch(() => {});
+      }
+    }
+  } catch(e) {
+    console.warn('[swap notify]', e.message);
+  }
+
   return { confirmed: true, count: lineup.length };
 }
 

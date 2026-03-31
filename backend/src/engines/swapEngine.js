@@ -122,6 +122,8 @@ function processAutoSwaps(matchId) {
     VALUES (?, ?, ?, ?)
   `);
 
+  const swapResults = []; // { userId, teamId, swaps: [{out, in}], noSwapNeeded: bool }
+
   const processAll = db.transaction(() => {
     for (const team of userTeams) {
       const allPlayers  = getTeamPlayers.all(team.id);
@@ -138,18 +140,27 @@ function processAutoSwaps(matchId) {
 
       updateResolved.run(resolved.captainId, resolved.viceCaptainId, team.id);
 
+      const teamSwaps = [];
       for (const swap of resolved.swapLog) {
         if (swap.type === 'swapped') {
           try {
             insertSwapLog.run(team.id, swap.swappedOut.id, swap.swappedIn.id, swap.inheritedRole);
+            teamSwaps.push({ out: swap.swappedOut.name, in: swap.swappedIn.name });
           } catch {}
         }
       }
+
+      swapResults.push({
+        userId: team.user_id,
+        teamId: team.id,
+        swaps: teamSwaps,
+        noSwapNeeded: resolved.swapLog.length === 0,
+      });
     }
   });
 
   processAll();
-  return userTeams.length;
+  return { teamsProcessed: userTeams.length, swapResults };
 }
 
 module.exports = { resolveTeam, processAutoSwaps };

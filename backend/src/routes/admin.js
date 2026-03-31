@@ -386,13 +386,13 @@ router.post('/matches/:id/reprocess-swaps', async (req, res) => {
 
     // Re-run swaps
     const { processAutoSwaps } = require('../engines/swapEngine');
-    const count = processAutoSwaps(matchId);
+    const { teamsProcessed } = processAutoSwaps(matchId);
 
     // Recompute team points
     const { recomputeTeamPoints } = require('../api/syncService');
     recomputeTeamPoints(matchId);
 
-    return res.json({ ok: true, teamsProcessed: count });
+    return res.json({ ok: true, teamsProcessed });
   } catch(e) {
     return res.status(500).json({ error: e.message });
   }
