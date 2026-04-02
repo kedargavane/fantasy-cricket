@@ -91,15 +91,27 @@ router.get('/:id/squad', requireAuth, (req, res) => {
   ).get(match.season_id, req.user.id);
   if (!member) return res.status(403).json({ error: 'Access denied' });
 
+  // Get season_id for this match to compute season stats
+  const seasonId = match.season_id;
+
   const squad = db.prepare(`
     SELECT
       p.id, p.name, p.team, p.role, p.external_player_id,
-      ms.is_playing_xi, ms.is_substitute
+      ms.is_playing_xi, ms.is_substitute,
+      COALESCE(SUM(pms.fantasy_points), 0) as season_pts,
+      CASE WHEN COUNT(pms.match_id) > 0
+        THEN ROUND(CAST(SUM(pms.fantasy_points) AS REAL) / COUNT(pms.match_id))
+        ELSE 0 END as season_avg
     FROM match_squads ms
     JOIN players p ON p.id = ms.player_id
+    LEFT JOIN player_match_stats pms ON pms.player_id = p.id
+      AND pms.match_id IN (
+        SELECT id FROM matches WHERE season_id = ? AND status = 'completed'
+      )
     WHERE ms.match_id = ?
+    GROUP BY p.id
     ORDER BY p.team, ms.is_playing_xi DESC, ms.is_substitute ASC, p.name
-  `).all(matchId);
+  `).all(seasonId, matchId);
 
   return res.json({ squad });
 });
@@ -239,6 +251,56 @@ router.get('/:id/rank-snapshots', requireAuth, (req, res) => {
   }
 
   return res.json({ matchId, series: Object.values(series) });
+});
+
+// ── GET /api/matches/player/:playerId/season/:seasonId/stats ─────────────────
+// Returns player's stats across all completed matches in a season
+router.get('/player/:playerId/season/:seasonId/stats', requireAuth, (req, res) => {
+  const db       = getDb();
+  const playerId = parseInt(req.params.playerId, 10);
+  const seasonId = parseInt(req.params.seasonId, 10);
+
+  const member = db.prepare(
+    'SELECT id FROM season_memberships WHERE season_id = ? AND user_id = ?'
+  ).get(seasonId, req.user.id);
+  if (!member) return res.status(403).json({ error: 'Access denied' });
+
+  const player = db.prepare('SELECT id, name, team, role FROM players WHERE id = ?').get(playerId);
+  if (!player) return res.status(404).json({ error: 'Player not found' });
+
+  const matches = db.prepare(`
+    SELECT
+      pms.fantasy_points, pms.runs, pms.balls_faced, pms.fours, pms.sixes,
+      pms.overs_bowled, pms.wickets, pms.runs_conceded, pms.maidens,
+      pms.catches, pms.stumpings, pms.run_outs,
+      m.id as match_id, m.team_a, m.team_b, m.start_time, m.status
+    FROM player_match_stats pms
+    JOIN matches m ON m.id = pms.match_id
+    WHERE pms.player_id = ? AND m.season_id = ? AND m.status = 'completed'
+    ORDER BY m.start_time DESC
+    LIMIT 5
+  `).all(playerId, seasonId);
+
+  const allMatches = db.prepare(`
+    SELECT COUNT(*) as total, SUM(pms.fantasy_points) as total_pts
+    FROM player_match_stats pms
+    JOIN matches m ON m.id = pms.match_id
+    WHERE pms.player_id = ? AND m.season_id = ? AND m.status = 'completed'
+  `).get(playerId, seasonId);
+
+  const totalMatches = allMatches?.total || 0;
+  const totalPts     = allMatches?.total_pts || 0;
+  const avgPts       = totalMatches > 0 ? Math.round(totalPts / totalMatches) : 0;
+  const bestPts      = matches.length > 0 ? Math.max(...matches.map(m => m.fantasy_points || 0)) : 0;
+
+  return res.json({
+    player,
+    totalMatches,
+    totalPts,
+    avgPts,
+    bestPts,
+    last5: matches,
+  });
 });
 
 module.exports = router;
