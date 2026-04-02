@@ -350,7 +350,7 @@ export default function TeamPickerPage() {
             <span className="picker-col-count">{colAMain} picked</span>
           </div>
           {colA.length === 0 && <div className="picker-empty">No players</div>}
-          {colA.map(p => <PlayerRow key={p.id} p={p} mainIds={mainIds} backupIds={backupIds} captainId={captainId} vcId={vcId} mainCount={mainCount} backupCount={backupCount} toggleMain={toggleMain} toggleBackup={toggleBackup} handleCaptain={handleCaptain} handleVc={handleVc} />)}
+          {colA.map(p => <PlayerRow key={p.id} p={p} mainIds={mainIds} backupIds={backupIds} captainId={captainId} vcId={vcId} mainCount={mainCount} backupCount={backupCount} toggleMain={toggleMain} toggleBackup={toggleBackup} handleCaptain={handleCaptain} handleVc={handleVc} onInfo={loadPlayerStats} />)}
         </div>
 
         {/* Column B */}
@@ -360,7 +360,7 @@ export default function TeamPickerPage() {
             <span className="picker-col-count">{colBMain} picked</span>
           </div>
           {colB.length === 0 && <div className="picker-empty">No players</div>}
-          {colB.map(p => <PlayerRow key={p.id} p={p} mainIds={mainIds} backupIds={backupIds} captainId={captainId} vcId={vcId} mainCount={mainCount} backupCount={backupCount} toggleMain={toggleMain} toggleBackup={toggleBackup} handleCaptain={handleCaptain} handleVc={handleVc} />)}
+          {colB.map(p => <PlayerRow key={p.id} p={p} mainIds={mainIds} backupIds={backupIds} captainId={captainId} vcId={vcId} mainCount={mainCount} backupCount={backupCount} toggleMain={toggleMain} toggleBackup={toggleBackup} handleCaptain={handleCaptain} handleVc={handleVc} onInfo={loadPlayerStats} />)}
         </div>
 
       </div>
@@ -459,7 +459,7 @@ export default function TeamPickerPage() {
   );
 }
 
-function PlayerRow({ p, mainIds, backupIds, captainId, vcId, mainCount, backupCount, toggleMain, toggleBackup, handleCaptain, handleVc }) {
+function PlayerRow({ p, mainIds, backupIds, captainId, vcId, mainCount, backupCount, toggleMain, toggleBackup, handleCaptain, handleVc, onInfo }) {
   const isMain  = mainIds.has(p.id);
   const isBak   = backupIds.has(p.id);
   const isCap   = captainId === p.id;
@@ -471,7 +471,7 @@ function PlayerRow({ p, mainIds, backupIds, captainId, vcId, mainCount, backupCo
     <div className={`prow ${isMain ? 'prow-main' : ''} ${isBak ? 'prow-bak' : ''} ${isCap ? 'prow-cap' : ''} ${isVc ? 'prow-vc' : ''}`}>
       <div className="prow-left">
         <span className={`pip ${p.is_playing_xi ? 'pip-xi-sm' : p.is_substitute ? 'pip-sub-sm' : 'pip-empty'}`} />
-        <div className="prow-info" onClick={() => loadPlayerStats(p)} style={{cursor:'pointer'}}>
+        <div className="prow-info" onClick={() => onInfo && onInfo(p)} style={{cursor:'pointer'}}>
           <span className="prow-name">{p.name}</span>
           <div style={{display:'flex',gap:6,alignItems:'center',marginTop:1}}>
             <span className="prow-role">{normaliseRole(p.role)}</span>
