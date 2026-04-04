@@ -281,8 +281,8 @@ export default function TeamPickerPage() {
         <div className="picker-topbar-center">
           <span className="picker-topbar-title">Pick your team</span>
           <span className="picker-topbar-match">{match?.team_a} vs {match?.team_b}</span>
-          {match?.venue_info && (
-            <span style={{fontSize:'0.65rem',color:'var(--text-muted)'}}>{match.venue_info}</span>
+          {(match?.venue_info || match?.venue) && (
+            <span style={{fontSize:'0.65rem',color:'var(--text-muted)'}}>{match.venue_info || match.venue}</span>
           )}
           {match?.status === 'live' || match?.status === 'completed' ? (
             <span className="picker-countdown" style={{color:'#f87171'}}>
