@@ -314,9 +314,14 @@ export default function LiveScorePage() {
         </div>
         <button
           onClick={loadData}
-          style={{flexShrink:0,background:'none',border:'none',cursor:'pointer',padding:'4px 8px',color:'var(--color-text-tertiary)',fontSize:'16px',lineHeight:1}}
-          title="Refresh"
-        >↻</button>
+          style={{flexShrink:0,display:'flex',alignItems:'center',gap:5,padding:'6px 10px',margin:'4px',background:'rgba(0,229,255,0.08)',border:'0.5px solid rgba(0,229,255,0.25)',borderRadius:20,color:'var(--accent-primary)',fontSize:'0.72rem',fontWeight:500,cursor:'pointer',whiteSpace:'nowrap'}}
+        >
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <path d="M12 7A5 5 0 1 1 9.5 2.5"/>
+            <path d="M9.5 1v2.5H12"/>
+          </svg>
+          Refresh
+        </button>
       </div>
 
       {/* Tab 0: Result (completed only) */}
