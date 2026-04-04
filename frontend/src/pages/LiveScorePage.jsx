@@ -306,10 +306,17 @@ export default function LiveScorePage() {
       </div>
 
       {/* Tabs */}
-      <div className="ls-tabs">
-        {TABS.map((t, i) => (
-          <button key={t} className={`ls-tab ${tab === i ? 'active' : ''}`} onClick={() => setTab(i)}>{t}</button>
-        ))}
+      <div className="ls-tabs" style={{display:'flex',alignItems:'center'}}>
+        <div style={{display:'flex',flex:1,overflowX:'auto'}}>
+          {TABS.map((t, i) => (
+            <button key={t} className={`ls-tab ${tab === i ? 'active' : ''}`} onClick={() => setTab(i)}>{t}</button>
+          ))}
+        </div>
+        <button
+          onClick={loadData}
+          style={{flexShrink:0,background:'none',border:'none',cursor:'pointer',padding:'4px 8px',color:'var(--color-text-tertiary)',fontSize:'16px',lineHeight:1}}
+          title="Refresh"
+        >↻</button>
       </div>
 
       {/* Tab 0: Result (completed only) */}
