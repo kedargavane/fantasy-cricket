@@ -2,21 +2,21 @@ import './TeamFormationView.css';
 
 // IPL team colour mapping — border + bg
 const TEAM_COLOURS = {
-  'Mumbai Indians':        { bg: '#0a1628', border: '#004B8E', text: '#6BAED6' },
-  'Kolkata Knight Riders': { bg: '#1a0a28', border: '#3A225D', text: '#B39DDB' },
-  'Royal Challengers Bengaluru': { bg: '#280a0a', border: '#C8102E', text: '#EF9A9A' },
-  'Royal Challengers Bangalore': { bg: '#280a0a', border: '#C8102E', text: '#EF9A9A' },
-  'Chennai Super Kings':   { bg: '#282200', border: '#FDB913', text: '#FFF176' },
-  'Sunrisers Hyderabad':   { bg: '#281400', border: '#F26522', text: '#FFCC80' },
-  'Rajasthan Royals':      { bg: '#200a28', border: '#EA1A8C', text: '#F48FB1' },
-  'Delhi Capitals':        { bg: '#00001a', border: '#0078BC', text: '#81D4FA' },
-  'Lucknow Super Giants':  { bg: '#001a14', border: '#A5CDCA', text: '#B2DFDB' },
-  'Gujarat Titans':        { bg: '#001428', border: '#1C4494', text: '#90CAF9' },
-  'Punjab Kings':          { bg: '#280000', border: '#ED1B24', text: '#EF9A9A' },
+  'Mumbai Indians':        { bg: '#deeaf8', border: '#004B8E', text: '#003a70' },
+  'Kolkata Knight Riders': { bg: '#ece8f8', border: '#3A225D', text: '#2d1a4a' },
+  'Royal Challengers Bengaluru': { bg: '#fde8ec', border: '#C8102E', text: '#9e0020' },
+  'Royal Challengers Bangalore': { bg: '#fde8ec', border: '#C8102E', text: '#9e0020' },
+  'Chennai Super Kings':   { bg: '#fff8d6', border: '#c49b00', text: '#7a5f00' },
+  'Sunrisers Hyderabad':   { bg: '#fff0e0', border: '#d45a00', text: '#a04400' },
+  'Rajasthan Royals':      { bg: '#fde8f4', border: '#c0006e', text: '#8c004e' },
+  'Delhi Capitals':        { bg: '#deeef8', border: '#0060a0', text: '#004a80' },
+  'Lucknow Super Giants':  { bg: '#e0f4f2', border: '#2a8a80', text: '#1a6a62' },
+  'Gujarat Titans':        { bg: '#dde8f4', border: '#1a3a80', text: '#102a60' },
+  'Punjab Kings':          { bg: '#fde8e8', border: '#cc1a1a', text: '#9e0000' },
 };
 
 function getTeamColour(teamName) {
-  if (!teamName) return { bg: '#111', border: '#222', text: '#555' };
+  if (!teamName) return { bg: '#eef1f8', border: '#8899bb', text: '#4a5a7a' };
   const key = Object.keys(TEAM_COLOURS).find(k =>
     teamName.toLowerCase().includes(k.toLowerCase().split(' ').slice(-1)[0])
   );

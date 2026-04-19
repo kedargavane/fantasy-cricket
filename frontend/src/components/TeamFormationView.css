@@ -1,11 +1,11 @@
 .tfv-field {
-  background: var(--bg-surface, #0a180a);
+  background: var(--bg-base);
   padding: 10px 8px 0;
 }
 
 .tfv-inner {
-  background: #0f220f;
-  border: 0.5px solid #1a3a1a;
+  background: #f0f7f0;
+  border: 0.5px solid #c8e0c8;
   border-radius: 8px;
   padding: 10px 6px 6px;
 }
@@ -14,7 +14,7 @@
 
 .tfv-row-label {
   font-size: 7px;
-  color: #1e4a1e;
+  color: #2d7a2d;
   letter-spacing: 0.08em;
   text-align: center;
   margin-bottom: 5px;
@@ -31,7 +31,7 @@
 
 .tfv-divider {
   height: 0.5px;
-  background: #1a2a1a;
+  background: #c8e0c8;
   margin: 2px 0 8px;
 }
 
@@ -70,13 +70,13 @@
 }
 
 .tfv-c   { background: #f5a623; color: #412402; }
-.tfv-v   { background: #00e5ff; color: #003a42; }
-.tfv-in  { background: #1d9e75; color: #e1f5ee; }
-.tfv-b   { background: #1a1a2e; color: #444; border: 0.5px dashed #333; }
+.tfv-v   { background: #1a6fd4; color: #ffffff; }
+.tfv-in  { background: #1a8a4a; color: #ffffff; }
+.tfv-b   { background: #1a1a2e; color: var(--text-secondary); border: 0.5px dashed #333; }
 
 .tfv-name {
   font-size: 7.5px;
-  color: #666;
+  color: var(--text-secondary);
   text-align: center;
   max-width: 42px;
   overflow: hidden;
@@ -88,7 +88,7 @@
 .tfv-pts {
   font-size: 9px;
   font-weight: 700;
-  color: #1a2a1a;
+  color: #c8e0c8;
 }
 .tfv-pts-active { color: #00e5ff; }
 .tfv-pts-dim    { color: #222; font-size: 7.5px; }
@@ -102,7 +102,7 @@
 
 .tfv-backup-label {
   font-size: 7px;
-  color: #1a2a1a;
+  color: #c8e0c8;
   letter-spacing: 0.08em;
   text-align: center;
   margin-bottom: 5px;
@@ -116,8 +116,8 @@
   justify-content: center;
   gap: 8px;
   padding: 6px 8px;
-  background: var(--bg-surface, #0d0d1f);
-  border-top: 0.5px solid #1a1a2e;
+  background: var(--bg-elevated);
+  border-top: 0.5px solid var(--border);
 }
 
 .tfv-leg-item {
@@ -125,7 +125,7 @@
   align-items: center;
   gap: 3px;
   font-size: 7.5px;
-  color: #444;
+  color: var(--text-secondary);
 }
 
 .tfv-leg-dot {
