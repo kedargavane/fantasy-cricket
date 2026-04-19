@@ -32,8 +32,8 @@
 
 /* Live banner */
 .live-banner {
-  background: linear-gradient(135deg, #0a2010 0%, #0f2a1a 100%);
-  border: 1px solid rgba(0,230,118,0.3);
+  background: linear-gradient(135deg, #e8f8ef 0%, #d4f0e0 100%);
+  border: 1px solid rgba(26,138,74,0.25);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   margin-bottom: var(--space-6);
@@ -51,13 +51,14 @@
   position: absolute;
   top: -60px; right: -60px;
   width: 160px; height: 160px;
-  background: radial-gradient(circle, rgba(0,230,118,0.12) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(26,138,74,0.1) 0%, transparent 70%);
 }
 
 .live-banner-content { flex: 1; display: flex; flex-direction: column; gap: 6px; }
 .live-label { font-size: 0.75rem; font-weight: 700; color: var(--accent-green); letter-spacing: 0.1em; }
 
 .live-teams {
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: var(--space-2);

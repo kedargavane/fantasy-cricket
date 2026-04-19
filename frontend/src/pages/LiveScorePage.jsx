@@ -681,12 +681,18 @@ function Foldable({ title, children, defaultOpen = false }) {
 function InlineCompare({ data }) {
   const A = data.teamA;
   const B = data.teamB;
-  const commonIds = new Set(data.common.playerIds);
   const gap = A.total_fantasy_points - B.total_fantasy_points;
 
-  const commonA = A.players.filter(p => commonIds.has(p.id));
-  const uniqueA = A.players.filter(p => !commonIds.has(p.id));
-  const uniqueB = B.players.filter(p => !commonIds.has(p.id));
+  // Use active players only (exclude swapped-out, exclude unused backups)
+  const activeA = A.players.filter(p => !p.swapped_out && (!p.is_backup || p.swapped_in));
+  const activeB = B.players.filter(p => !p.swapped_out && (!p.is_backup || p.swapped_in));
+  const activeIdsA = new Set(activeA.map(p => p.id));
+  const activeIdsB = new Set(activeB.map(p => p.id));
+  const commonIds = new Set(activeA.filter(p => activeIdsB.has(p.id)).map(p => p.id));
+
+  const commonA = activeA.filter(p => commonIds.has(p.id));
+  const uniqueA = activeA.filter(p => !commonIds.has(p.id));
+  const uniqueB = activeB.filter(p => !commonIds.has(p.id));
 
   function MiniCell({ player, right }) {
     if (!player) return <div style={{flex:1}} />;

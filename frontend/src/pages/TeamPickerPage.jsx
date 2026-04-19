@@ -71,7 +71,11 @@ export default function TeamPickerPage() {
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState('');
-  const [filter, setFilter]     = useState('ALL');
+  const [filter, setFilter]       = useState('ALL');
+  const [sortByPts, setSortByPts] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [playerStats, setPlayerStats]       = useState(null);
+  const [loadingStats, setLoadingStats]     = useState(false);
 
   const [mainIds,   setMainIds]   = useState(new Set());
   const [backupIds, setBackupIds] = useState(new Set());
@@ -154,8 +158,7 @@ export default function TeamPickerPage() {
   const backupCount = backupIds.size;
 
   function applyRoleFilter(players) {
-    if (filter === 'ALL') return players;
-    return players.filter(p => {
+    let result = filter === 'ALL' ? players : players.filter(p => {
       const r = normaliseRole(p.role);
       if (filter === 'BAT')  return r === 'Bat';
       if (filter === 'BOWL') return r === 'Bowl';
@@ -163,6 +166,20 @@ export default function TeamPickerPage() {
       if (filter === 'WK')   return r === 'WK';
       return true;
     });
+    if (sortByPts) result = [...result].sort((a, b) => (b.season_pts || 0) - (a.season_pts || 0));
+    return result;
+  }
+
+  async function loadPlayerStats(player) {
+    setSelectedPlayer(player);
+    setPlayerStats(null);
+    setLoadingStats(true);
+    try {
+      const seasonId = match?.season_id;
+      const res = await api.get(`/matches/player/${player.id}/season/${seasonId}/stats`);
+      setPlayerStats(res.data);
+    } catch {}
+    finally { setLoadingStats(false); }
   }
 
   function toggleMain(playerId) {
@@ -297,13 +314,22 @@ export default function TeamPickerPage() {
         </div>
       </div>
 
-      {/* Role filters */}
-      <div className="picker-filters">
-        {ROLE_FILTERS.map(f => (
-          <button key={f.key} className={`filter-btn ${filter === f.key ? 'active' : ''}`} onClick={() => setFilter(f.key)}>
-            {f.label}
-          </button>
-        ))}
+      {/* Role filters + sort */}
+      <div className="picker-filters" style={{display:'flex',alignItems:'center'}}>
+        <div style={{display:'flex',flex:1,overflowX:'auto',gap:4}}>
+          {ROLE_FILTERS.map(f => (
+            <button key={f.key} className={`filter-btn ${filter === f.key ? 'active' : ''}`} onClick={() => setFilter(f.key)}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <button
+          className={`filter-btn ${sortByPts ? 'active' : ''}`}
+          onClick={() => setSortByPts(s => !s)}
+          style={{flexShrink:0,marginLeft:4}}
+        >
+          {sortByPts ? '↓ Pts' : 'Sort'}
+        </button>
       </div>
 
       {/* Legend */}
@@ -324,7 +350,7 @@ export default function TeamPickerPage() {
             <span className="picker-col-count">{colAMain} picked</span>
           </div>
           {colA.length === 0 && <div className="picker-empty">No players</div>}
-          {colA.map(p => <PlayerRow key={p.id} p={p} mainIds={mainIds} backupIds={backupIds} captainId={captainId} vcId={vcId} mainCount={mainCount} backupCount={backupCount} toggleMain={toggleMain} toggleBackup={toggleBackup} handleCaptain={handleCaptain} handleVc={handleVc} />)}
+          {colA.map(p => <PlayerRow key={p.id} p={p} mainIds={mainIds} backupIds={backupIds} captainId={captainId} vcId={vcId} mainCount={mainCount} backupCount={backupCount} toggleMain={toggleMain} toggleBackup={toggleBackup} handleCaptain={handleCaptain} handleVc={handleVc} onInfo={loadPlayerStats} />)}
         </div>
 
         {/* Column B */}
@@ -334,7 +360,7 @@ export default function TeamPickerPage() {
             <span className="picker-col-count">{colBMain} picked</span>
           </div>
           {colB.length === 0 && <div className="picker-empty">No players</div>}
-          {colB.map(p => <PlayerRow key={p.id} p={p} mainIds={mainIds} backupIds={backupIds} captainId={captainId} vcId={vcId} mainCount={mainCount} backupCount={backupCount} toggleMain={toggleMain} toggleBackup={toggleBackup} handleCaptain={handleCaptain} handleVc={handleVc} />)}
+          {colB.map(p => <PlayerRow key={p.id} p={p} mainIds={mainIds} backupIds={backupIds} captainId={captainId} vcId={vcId} mainCount={mainCount} backupCount={backupCount} toggleMain={toggleMain} toggleBackup={toggleBackup} handleCaptain={handleCaptain} handleVc={handleVc} onInfo={loadPlayerStats} />)}
         </div>
 
       </div>
@@ -377,10 +403,64 @@ export default function TeamPickerPage() {
       </div>
 
     </div>
+
+    {/* Player stats detail screen */}
+    {selectedPlayer && (
+      <div style={{position:'fixed',inset:0,background:'var(--bg-base)',zIndex:200,display:'flex',flexDirection:'column'}}>
+        <div style={{padding:'12px 16px',borderBottom:'0.5px solid var(--border)',display:'flex',alignItems:'center',gap:10,background:'var(--bg-surface)'}}>
+          <button onClick={() => { setSelectedPlayer(null); setPlayerStats(null); }} style={{background:'none',border:'none',color:'var(--text-secondary)',fontSize:22,cursor:'pointer',padding:0,lineHeight:1}}>‹</button>
+          <div style={{flex:1}}>
+            <div style={{fontSize:15,fontWeight:600,color:'var(--text-primary)'}}>{selectedPlayer.name}</div>
+            <div style={{fontSize:10,color:'var(--text-muted)',marginTop:1}}>{selectedPlayer.team} · {normaliseRole(selectedPlayer.role)}</div>
+          </div>
+        </div>
+        {loadingStats
+          ? <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center'}}><div className="spinner" /></div>
+          : playerStats ? (<>
+              <div style={{padding:'14px 16px',borderBottom:'0.5px solid var(--border)',background:'var(--bg-elevated)'}}>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
+                  {[
+                    {label:'total pts', value: playerStats.totalPts,    color:'var(--accent-primary)'},
+                    {label:'avg pts',   value: playerStats.avgPts,      color:'var(--accent-primary)'},
+                    {label:'best',      value: playerStats.bestPts,     color:'var(--accent-gold)'},
+                    {label:'matches',   value: playerStats.totalMatches, color:'var(--text-primary)'},
+                  ].map(s => (
+                    <div key={s.label} style={{background:'var(--bg-surface)',border:'0.5px solid var(--border)',borderRadius:6,padding:'8px 4px',textAlign:'center'}}>
+                      <div style={{fontSize:9,color:'var(--text-muted)',marginBottom:3}}>{s.label}</div>
+                      <div style={{fontSize:18,fontWeight:700,color:s.color}}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{flex:1,overflowY:'auto',padding:'12px 16px'}}>
+                <div style={{fontSize:9,color:'var(--text-muted)',letterSpacing:'0.06em',marginBottom:8}}>LAST {playerStats.last5.length} MATCHES THIS SEASON</div>
+                {playerStats.last5.length === 0
+                  ? <div style={{color:'var(--text-muted)',fontSize:13,textAlign:'center',marginTop:40}}>No matches played yet this season</div>
+                  : playerStats.last5.map((m, i) => (
+                    <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',borderBottom:'0.5px solid var(--border)'}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:11,color:'var(--text-secondary)'}}>{m.team_a} vs {m.team_b}</div>
+                        <div style={{fontSize:9,color:'var(--text-muted)',marginTop:3}}>
+                          {[m.runs>0&&m.runs+'r', m.balls_faced>0&&m.balls_faced+'b', m.fours>0&&m.fours+'x4', m.sixes>0&&m.sixes+'x6', m.wickets>0&&m.wickets+'w', m.catches>0&&m.catches+'ct', m.stumpings>0&&m.stumpings+'st', m.run_outs>0&&m.run_outs+'ro'].filter(Boolean).join(' · ')}
+                        </div>
+                      </div>
+                      <div style={{fontSize:16,fontWeight:700,color:m.fantasy_points>=60?'var(--accent-primary)':m.fantasy_points>=30?'var(--text-secondary)':'var(--text-muted)'}}>
+                        {m.fantasy_points}
+                      </div>
+                    </div>
+                  ))
+                }
+              </div>
+            </>)
+          : <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-muted)',fontSize:13}}>No data</div>
+        }
+      </div>
+    )}
+
   );
 }
 
-function PlayerRow({ p, mainIds, backupIds, captainId, vcId, mainCount, backupCount, toggleMain, toggleBackup, handleCaptain, handleVc }) {
+function PlayerRow({ p, mainIds, backupIds, captainId, vcId, mainCount, backupCount, toggleMain, toggleBackup, handleCaptain, handleVc, onInfo }) {
   const isMain  = mainIds.has(p.id);
   const isBak   = backupIds.has(p.id);
   const isCap   = captainId === p.id;
@@ -392,9 +472,16 @@ function PlayerRow({ p, mainIds, backupIds, captainId, vcId, mainCount, backupCo
     <div className={`prow ${isMain ? 'prow-main' : ''} ${isBak ? 'prow-bak' : ''} ${isCap ? 'prow-cap' : ''} ${isVc ? 'prow-vc' : ''}`}>
       <div className="prow-left">
         <span className={`pip ${p.is_playing_xi ? 'pip-xi-sm' : 'pip-empty'}`} />
-        <div className="prow-info">
+        <div className="prow-info" onClick={() => onInfo && onInfo(p)} style={{cursor:'pointer'}}>
           <span className="prow-name">{p.name}</span>
-          <span className="prow-role">{normaliseRole(p.role)}</span>
+          <div style={{display:'flex',gap:6,alignItems:'center',marginTop:1}}>
+            <span className="prow-role">{normaliseRole(p.role)}</span>
+            {p.season_pts > 0 && <>
+              <span style={{fontSize:'9px',color:'var(--accent-primary)',fontWeight:600}}>{p.season_pts}pts</span>
+              <span style={{fontSize:'9px',color:'var(--text-muted)'}}>{p.season_avg}avg</span>
+            </>}
+            {(p.season_pts === 0 || p.season_pts === undefined) && <span style={{fontSize:'9px',color:'var(--text-muted)'}}>0pts</span>}
+          </div>
         </div>
       </div>
       <div className="prow-right">
