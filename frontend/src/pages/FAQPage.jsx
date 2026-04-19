@@ -83,11 +83,11 @@ export default function FAQPage() {
           </div>
         </section>
 
-        {/* Updates */}
+        {/* Score updates */}
         <section className="faq-section">
           <h2 className="faq-section-title">🔄 Score updates</h2>
           <div className="faq-card">
-            <p className="faq-text">Scores refresh automatically — no need to reload the page.</p>
+            <p className="faq-text">Scores refresh automatically — no need to reload the page. Use the Refresh button on the leaderboard tab to pull the latest data manually.</p>
             <div className="faq-update-rows">
               <div className="faq-update-row">
                 <span className="faq-update-label">Live match</span>
@@ -109,9 +109,9 @@ export default function FAQPage() {
           </div>
         </section>
 
-        {/* Backups */}
+        {/* Backups & swaps */}
         <section className="faq-section">
-          <h2 className="faq-section-title">🔁 Backup players</h2>
+          <h2 className="faq-section-title">🔁 Backup players & auto-swap</h2>
           <div className="faq-card">
             <p className="faq-text">Pick up to 2 backup players. If a main player misses the Playing XI, your backup automatically replaces them at match start.</p>
             <div className="faq-swap-flow">
@@ -131,81 +131,180 @@ export default function FAQPage() {
               <tbody>
                 <tr><td>Backups are optional</td><td>0, 1, or 2</td></tr>
                 <tr><td>Swap order</td><td>Backup 1 first, then Backup 2</td></tr>
-                <tr><td>C/VC transfer</td><td>Multiplier moves to the backup</td></tr>
+                <tr><td>C/VC transfer</td><td>Multiplier moves to backup</td></tr>
                 <tr><td>No valid backup</td><td>Player scores 0 pts</td></tr>
+                <tr><td>Both main and backup out</td><td>No swap, 0 pts</td></tr>
+                <tr><td>Impact sub as backup</td><td>Still counts — swapped in</td></tr>
+              </tbody>
+            </table>
+            <p className="faq-note" style={{marginTop:10}}>You get a push notification after the XI is announced telling you whether a swap was applied or all your players are in.</p>
+          </div>
+        </section>
+
+        {/* Impact substitutes */}
+        <section className="faq-section">
+          <h2 className="faq-section-title">🔀 Impact substitutes</h2>
+          <div className="faq-card">
+            <p className="faq-text">IPL allows impact substitutes — a player who comes on after the match starts. In the picker, impact subs are shown with an amber dot.</p>
+            <table className="faq-table" style={{marginTop:10}}>
+              <tbody>
+                <tr><td>Impact sub in your main XI</td><td>Earns points normally</td></tr>
+                <tr><td>Impact sub as your backup</td><td>Can still be swapped in</td></tr>
+                <tr><td>Your pick replaced by impact sub</td><td>No effect — pick still plays</td></tr>
               </tbody>
             </table>
           </div>
         </section>
 
-        {/* Timeline */}
+        {/* Player stats */}
+        <section className="faq-section">
+          <h2 className="faq-section-title">📊 Player stats on picker</h2>
+          <div className="faq-card">
+            <p className="faq-text">The picker shows each player's season total points and average directly under their name — so you can make informed picks without leaving the page.</p>
+            <table className="faq-table" style={{marginTop:10}}>
+              <tbody>
+                <tr><td>Tap a player name</td><td>Opens full season stats</td></tr>
+                <tr><td>Stats shown</td><td>Total pts, avg, best, last 5 matches</td></tr>
+                <tr><td>Sort button</td><td>Sort both columns by season pts</td></tr>
+                <tr><td>New players (0 pts)</td><td>Haven't played yet this season</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Team view */}
+        <section className="faq-section">
+          <h2 className="faq-section-title">🗺 Team visual view</h2>
+          <div className="faq-card">
+            <p className="faq-text">Tap any team on the leaderboard to see their players. Switch between List view (detailed scores) and Visual view (formation layout grouped by role).</p>
+            <table className="faq-table" style={{marginTop:10}}>
+              <tbody>
+                <tr><td>Visual view</td><td>WK → Bat → AR → Bowl → Backups</td></tr>
+                <tr><td>IPL team colours</td><td>Circle colour = player's franchise</td></tr>
+                <tr><td>Green ↑ badge</td><td>Backup was swapped in</td></tr>
+                <tr><td>Dashed circle</td><td>Unused backup</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Compare */}
+        <section className="faq-section">
+          <h2 className="faq-section-title">⚡ Compare teams</h2>
+          <div className="faq-card">
+            <p className="faq-text">The Compare tab shows two teams side by side. Players are grouped into Common (both picked) and Unique (only one team picked them).</p>
+            <table className="faq-table" style={{marginTop:10}}>
+              <tbody>
+                <tr><td>Common players</td><td>Same pick, different roles/pts</td></tr>
+                <tr><td>Unique players</td><td>Where the match is won or lost</td></tr>
+                <tr><td>Swapped out</td><td>Faded with OUT badge — 0 pts</td></tr>
+                <tr><td>↑ badge</td><td>Backup swapped in — earns real pts</td></tr>
+                <tr><td>B badge</td><td>Unused backup</td></tr>
+                <tr><td>Backups section</td><td>Shown at bottom for both teams</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Notifications */}
+        <section className="faq-section">
+          <h2 className="faq-section-title">🔔 Push notifications</h2>
+          <div className="faq-card">
+            <p className="faq-text">Enable push notifications in Settings to get real-time alerts. On iPhone you must add the app to your Home Screen first.</p>
+            <table className="faq-table" style={{marginTop:10}}>
+              <tbody>
+                <tr><td>Playing XI announced</td><td>Know who's in before lock</td></tr>
+                <tr><td>Swap update</td><td>Which backup came in (or didn't)</td></tr>
+                <tr><td>Rank injection</td><td>Alert when you drop 2+ ranks live</td></tr>
+                <tr><td>Match result</td><td>Your final rank and units won/lost</td></tr>
+              </tbody>
+            </table>
+            <p className="faq-note" style={{marginTop:10}}>iPhone: Safari → Share → Add to Home Screen → open from Home Screen → Settings → Enable Push Notifications.</p>
+          </div>
+        </section>
+
+        {/* Season standings */}
+        <section className="faq-section">
+          <h2 className="faq-section-title">🏆 Season standings</h2>
+          <div className="faq-card">
+            <p className="faq-text">The season leaderboard ranks players by net units won across all matches. A minimum number of matches must be played to be eligible for a ranking.</p>
+            <table className="faq-table" style={{marginTop:10}}>
+              <tbody>
+                <tr><td>Ranked by</td><td>Net units → total fantasy pts</td></tr>
+                <tr><td>Eligibility</td><td>Min 25% of matches played</td></tr>
+                <tr><td>Abandoned matches</td><td>Not counted — no units deducted</td></tr>
+                <tr><td>Entry cost</td><td>300u per match</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Picker symbols */}
         <section className="faq-section">
           <h2 className="faq-section-title">🔣 Picker symbols guide</h2>
           <div style={{display:'flex',flexDirection:'column',gap:0}}>
 
-            {/* Selection */}
-            <p className="faq-subhead" style={{color:'var(--color-text-secondary)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.08em',marginBottom:8,marginTop:4}}>SELECTION</p>
+            <p className="faq-subhead" style={{color:'var(--text-muted)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.08em',marginBottom:8,marginTop:4}}>SELECTION</p>
             {[
-              { badge: <span style={{width:28,height:28,borderRadius:6,background:'#1e2040',border:'1px solid #2a2d50',display:'flex',alignItems:'center',justifyContent:'center',color:'#00E5FF',fontSize:18,flexShrink:0}}>+</span>, label: 'Add to Main XI', desc: 'Tap to select as one of your 11 main players' },
-              { badge: <span style={{width:28,height:28,borderRadius:6,background:'#2a1f00',border:'1px solid #665500',display:'flex',alignItems:'center',justifyContent:'center',color:'#FFB300',fontSize:13,fontWeight:700,flexShrink:0}}>B</span>, label: 'Add as Backup', desc: 'Auto-replaces a non-playing main player at toss' },
-              { badge: <span style={{width:28,height:28,borderRadius:6,background:'#1a3300',border:'1px solid #336600',display:'flex',alignItems:'center',justifyContent:'center',color:'#66FF44',fontSize:11,fontWeight:700,flexShrink:0}}>B✓</span>, label: 'Backup selected', desc: 'Player confirmed as your backup' },
+              { badge: <span style={{width:28,height:28,borderRadius:6,background:'var(--bg-elevated)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--accent-primary)',fontSize:18,flexShrink:0}}>+</span>, label: 'Add to Main XI', desc: 'Tap to select as one of your 11 main players' },
+              { badge: <span style={{width:28,height:28,borderRadius:6,background:'var(--bg-elevated)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--accent-gold)',fontSize:13,fontWeight:700,flexShrink:0}}>B</span>, label: 'Add as Backup', desc: 'Auto-replaces a non-playing main player at toss' },
+              { badge: <span style={{width:28,height:28,borderRadius:6,background:'var(--bg-elevated)',border:'1px solid var(--accent-green)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--accent-green)',fontSize:11,fontWeight:700,flexShrink:0}}>B✓</span>, label: 'Backup selected', desc: 'Player confirmed as your backup' },
             ].map((item, i) => (
               <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
                 {item.badge}
                 <div>
-                  <div style={{fontSize:'0.85rem',fontWeight:500,color:'var(--color-text)'}}>{item.label}</div>
-                  <div style={{fontSize:'0.75rem',color:'var(--color-text-secondary)'}}>{item.desc}</div>
+                  <div style={{fontSize:'0.85rem',fontWeight:500}}>{item.label}</div>
+                  <div style={{fontSize:'0.75rem',color:'var(--text-muted)'}}>{item.desc}</div>
                 </div>
               </div>
             ))}
 
-            {/* Captain */}
-            <p className="faq-subhead" style={{color:'var(--color-text-secondary)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.08em',marginBottom:8,marginTop:16}}>CAPTAIN & VICE CAPTAIN</p>
+            <p className="faq-subhead" style={{color:'var(--text-muted)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.08em',marginBottom:8,marginTop:16}}>CAPTAIN & VICE CAPTAIN</p>
             {[
-              { badge: <span style={{width:28,height:28,borderRadius:'50%',background:'#cc8800',display:'flex',alignItems:'center',justifyContent:'center',color:'#000',fontSize:13,fontWeight:700,flexShrink:0}}>C</span>, label: 'Captain · 2× points', desc: 'All fantasy points doubled for this player' },
-              { badge: <span style={{width:28,height:28,borderRadius:'50%',background:'#00bcd4',display:'flex',alignItems:'center',justifyContent:'center',color:'#000',fontSize:11,fontWeight:700,flexShrink:0}}>VC</span>, label: 'Vice Captain · 1.5× points', desc: '50% bonus added to all fantasy points' },
+              { badge: <span style={{width:28,height:28,borderRadius:'50%',background:'#f5a623',display:'flex',alignItems:'center',justifyContent:'center',color:'#412402',fontSize:13,fontWeight:700,flexShrink:0}}>C</span>, label: 'Captain · 2× points', desc: 'All fantasy points doubled for this player' },
+              { badge: <span style={{width:28,height:28,borderRadius:'50%',background:'var(--accent-primary)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:11,fontWeight:700,flexShrink:0}}>VC</span>, label: 'Vice Captain · 1.5× points', desc: '50% bonus added to all fantasy points' },
             ].map((item, i) => (
               <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
                 {item.badge}
                 <div>
-                  <div style={{fontSize:'0.85rem',fontWeight:500,color:'var(--color-text)'}}>{item.label}</div>
-                  <div style={{fontSize:'0.75rem',color:'var(--color-text-secondary)'}}>{item.desc}</div>
+                  <div style={{fontSize:'0.85rem',fontWeight:500}}>{item.label}</div>
+                  <div style={{fontSize:'0.75rem',color:'var(--text-muted)'}}>{item.desc}</div>
                 </div>
               </div>
             ))}
 
-            {/* Status dots */}
-            <p className="faq-subhead" style={{color:'var(--color-text-secondary)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.08em',marginBottom:8,marginTop:16}}>PLAYER STATUS</p>
+            <p className="faq-subhead" style={{color:'var(--text-muted)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.08em',marginBottom:8,marginTop:16}}>PLAYER STATUS</p>
             {[
-              { badge: <span style={{width:10,height:10,borderRadius:'50%',background:'#00E5FF',display:'inline-block',flexShrink:0,margin:'0 9px'}} />, label: 'Playing XI confirmed', desc: 'Player is in the playing 11 — confirmed after toss' },
-              { badge: <span style={{width:10,height:10,borderRadius:'50%',border:'1.5px solid #3a3a5a',display:'inline-block',flexShrink:0,margin:'0 9px'}} />, label: 'Not yet confirmed', desc: 'Playing XI not announced or player not selected' },
+              { badge: <span style={{width:10,height:10,borderRadius:'50%',background:'var(--accent-primary)',display:'inline-block',flexShrink:0,margin:'0 9px'}} />, label: 'Playing XI confirmed', desc: 'Player is in the playing 11 — confirmed after toss' },
+              { badge: <span style={{width:10,height:10,borderRadius:'50%',background:'var(--accent-gold)',display:'inline-block',flexShrink:0,margin:'0 9px'}} />, label: 'Impact substitute', desc: 'Player is an IPL impact sub — still earns points' },
+              { badge: <span style={{width:10,height:10,borderRadius:'50%',border:'1.5px solid var(--border-strong)',display:'inline-block',flexShrink:0,margin:'0 9px'}} />, label: 'Not yet confirmed', desc: 'Playing XI not announced or player not selected' },
             ].map((item, i) => (
               <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
                 {item.badge}
                 <div>
-                  <div style={{fontSize:'0.85rem',fontWeight:500,color:'var(--color-text)'}}>{item.label}</div>
-                  <div style={{fontSize:'0.75rem',color:'var(--color-text-secondary)'}}>{item.desc}</div>
+                  <div style={{fontSize:'0.85rem',fontWeight:500}}>{item.label}</div>
+                  <div style={{fontSize:'0.75rem',color:'var(--text-muted)'}}>{item.desc}</div>
                 </div>
               </div>
             ))}
 
-            {/* Swap badges */}
-            <p className="faq-subhead" style={{color:'var(--color-text-secondary)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.08em',marginBottom:8,marginTop:16}}>DURING MATCH (SWAPS)</p>
+            <p className="faq-subhead" style={{color:'var(--text-muted)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.08em',marginBottom:8,marginTop:16}}>DURING MATCH (SWAPS)</p>
             {[
-              { badge: <span style={{padding:'2px 6px',borderRadius:3,background:'rgba(29,158,117,0.2)',color:'#1D9E75',fontSize:'0.65rem',fontWeight:700,flexShrink:0}}>↑IN</span>, label: 'Backup swapped in', desc: 'This backup replaced a non-playing main player' },
-              { badge: <span style={{padding:'2px 6px',borderRadius:3,background:'rgba(248,113,113,0.2)',color:'#f87171',fontSize:'0.65rem',fontWeight:700,flexShrink:0}}>OUT</span>, label: 'Swapped out', desc: 'This player was not in the playing XI — replaced by backup' },
+              { badge: <span style={{padding:'2px 6px',borderRadius:3,background:'rgba(26,138,74,0.15)',color:'var(--accent-green)',fontSize:'0.65rem',fontWeight:700,flexShrink:0}}>↑IN</span>, label: 'Backup swapped in', desc: 'This backup replaced a non-playing main player' },
+              { badge: <span style={{padding:'2px 6px',borderRadius:3,background:'rgba(212,32,32,0.12)',color:'var(--accent-red)',fontSize:'0.65rem',fontWeight:700,flexShrink:0}}>OUT</span>, label: 'Swapped out', desc: 'This player was not in the XI — replaced by backup' },
             ].map((item, i) => (
               <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderBottom: i===0 ? '1px solid var(--border)' : 'none'}}>
                 {item.badge}
                 <div>
-                  <div style={{fontSize:'0.85rem',fontWeight:500,color:'var(--color-text)'}}>{item.label}</div>
-                  <div style={{fontSize:'0.75rem',color:'var(--color-text-secondary)'}}>{item.desc}</div>
+                  <div style={{fontSize:'0.85rem',fontWeight:500}}>{item.label}</div>
+                  <div style={{fontSize:'0.75rem',color:'var(--text-muted)'}}>{item.desc}</div>
                 </div>
               </div>
             ))}
           </div>
         </section>
 
+        {/* Timeline */}
         <section className="faq-section">
           <h2 className="faq-section-title">📅 Order of events</h2>
           <div className="faq-card">
@@ -217,7 +316,7 @@ export default function FAQPage() {
                 </div>
                 <div className="faq-tl-content">
                   <div className="faq-tl-title">Match announced <span className="faq-badge faq-badge-purple">days before</span></div>
-                  <div className="faq-tl-desc">Match appears in the app. Pick from the full 15-player squad. Backups optional.</div>
+                  <div className="faq-tl-desc">Match appears in the app. Pick from the full squad. Backups optional. Player season stats visible on picker.</div>
                 </div>
               </div>
               <div className="faq-tl-item">
@@ -226,8 +325,8 @@ export default function FAQPage() {
                   <div className="faq-tl-line"></div>
                 </div>
                 <div className="faq-tl-content">
-                  <div className="faq-tl-title">Toss <span className="faq-badge faq-badge-blue">~30 min before</span></div>
-                  <div className="faq-tl-desc">Playing XI confirmed. Green dots appear on the picker. You can still update your team.</div>
+                  <div className="faq-tl-title">XI announced <span className="faq-badge faq-badge-blue">~30 min before</span></div>
+                  <div className="faq-tl-desc">Playing XI confirmed. Blue dots appear on picker. Push notification sent. Impact subs shown with amber dot. You can still update your team.</div>
                 </div>
               </div>
               <div className="faq-tl-item">
@@ -237,7 +336,7 @@ export default function FAQPage() {
                 </div>
                 <div className="faq-tl-content">
                   <div className="faq-tl-title">Match starts <span className="faq-badge faq-badge-amber">first ball</span></div>
-                  <div className="faq-tl-desc">Teams locked. Backups auto-swapped. Live scoring begins, leaderboard updates every 60s.</div>
+                  <div className="faq-tl-desc">Teams locked. Backups auto-swapped. Push notification confirms your swap. Live scoring begins, leaderboard updates every 60s.</div>
                 </div>
               </div>
               <div className="faq-tl-item">
@@ -246,7 +345,7 @@ export default function FAQPage() {
                 </div>
                 <div className="faq-tl-content">
                   <div className="faq-tl-title">Match ends <span className="faq-badge faq-badge-green">final result</span></div>
-                  <div className="faq-tl-desc">Final scores set. Prizes distributed. Podium, full rankings, and basement revealed.</div>
+                  <div className="faq-tl-desc">Final scores set. Push notification with your rank and units. Prizes distributed. Season standings updated.</div>
                 </div>
               </div>
             </div>
