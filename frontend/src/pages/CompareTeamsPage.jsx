@@ -231,16 +231,14 @@ export default function CompareTeamsPage() {
                   {Array.from({ length: maxBak }, (_, i) => {
                     const pA = backupA[i];
                     const pB = backupB[i];
-                    const aSwappedIn = pA && swappedInA.has(pA.id);
-                    const bSwappedIn = pB && swappedInB.has(pB.id);
                     return (
                       <div key={i} className="cp-row cp-row-backup">
                         {pA
-                          ? <PlayerCell player={pA} side="left" isBackup={!aSwappedIn} swappedIn={aSwappedIn} />
+                          ? <PlayerCell player={pA} side="left" isBackup={true} swappedIn={false} />
                           : <div className="cp-cell cp-empty">—</div>
                         }
                         {pB
-                          ? <PlayerCell player={pB} side="right" isBackup={!bSwappedIn} swappedIn={bSwappedIn} />
+                          ? <PlayerCell player={pB} side="right" isBackup={true} swappedIn={false} />
                           : <div className="cp-cell cp-empty cp-cell-right">—</div>
                         }
                       </div>
@@ -268,7 +266,7 @@ function PlayerCell({ player, side, swappedIn, swappedOut, isBackup }) {
 
   function Badge() {
     if (swappedIn)  return <div className="cp-badge cp-in">↑</div>;
-    if (swappedOut) return <span style={{fontSize:'0.55rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(248,113,113,0.2)',color:'#f87171',whiteSpace:'nowrap'}}>OUT</span>;
+    if (swappedOut) return <span style={{fontSize:'0.55rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(212,32,32,0.1)',color:'var(--accent-red)',whiteSpace:'nowrap'}}>OUT</span>;
     if (isBackup)   return <div className="cp-badge cp-bak">B</div>;
     if (isCap)      return <div className="cp-badge cp-cap">C</div>;
     if (isVC)       return <div className="cp-badge cp-vc">V</div>;
@@ -280,13 +278,13 @@ function PlayerCell({ player, side, swappedIn, swappedOut, isBackup }) {
       {!isRight && <Badge />}
       <div className={`cp-info ${isRight ? 'cp-info-right' : ''}`}>
         <div style={{display:'flex',alignItems:'center',gap:4,flexDirection:isRight?'row-reverse':'row'}}>
-          {isXI && <span style={{width:6,height:6,borderRadius:'50%',background:'#00E5FF',display:'inline-block',flexShrink:0}} />}
+          {isXI && <span style={{width:6,height:6,borderRadius:'50%',background:'var(--accent-primary)',display:'inline-block',flexShrink:0}} />}
           <span className="cp-name" style={{opacity: swappedOut ? 0.4 : isBackup && !swappedIn ? 0.5 : 1}}>{shortName}</span>
         </div>
         <span className="cp-sub">{player.team?.split(' ')[0]} · {player.role?.slice(0,3)}</span>
       </div>
       {isBackup && !swappedIn
-        ? <span className="cp-pts" style={{fontSize:'0.65rem',color:'#333',fontStyle:'italic'}}>unused</span>
+        ? <span className="cp-pts" style={{fontSize:'0.65rem',color:'var(--text-muted)',fontStyle:'italic'}}>unused</span>
         : <span className={`cp-pts ${pts > 0 ? 'cp-pts-pos' : pts < 0 ? 'cp-pts-neg' : ''}`} style={{opacity: swappedOut ? 0.4 : 1}}>{pts}</span>
       }
       {isRight && <Badge />}
