@@ -272,6 +272,7 @@ export default function TeamPickerPage() {
   const colBMain = playersB.filter(p => mainIds.has(p.id)).length;
 
   return (
+    <>
     <div className="picker-page">
 
       {/* Top bar */}
@@ -457,6 +458,7 @@ export default function TeamPickerPage() {
       </div>
     )}
 
+    </>
   );
 }
 
