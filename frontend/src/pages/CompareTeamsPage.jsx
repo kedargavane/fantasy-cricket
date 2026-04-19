@@ -201,6 +201,36 @@ export default function CompareTeamsPage() {
                 ))}
               </>
             )}
+
+            {/* Backups section */}
+            {(backupA.length > 0 || backupB.length > 0) && (() => {
+              const maxBak = Math.max(backupA.length, backupB.length);
+              return (
+                <>
+                  <div className="cp-group-label" style={{borderTop:'1px dashed var(--border)',marginTop:4}}>
+                    <span>Backups</span>
+                  </div>
+                  {Array.from({ length: maxBak }, (_, i) => {
+                    const pA = backupA[i];
+                    const pB = backupB[i];
+                    const aSwappedIn = pA && swappedInA.has(pA.id);
+                    const bSwappedIn = pB && swappedInB.has(pB.id);
+                    return (
+                      <div key={i} className="cp-row cp-row-backup">
+                        {pA
+                          ? <PlayerCell player={pA} side="left" isBackup={!aSwappedIn} swappedIn={aSwappedIn} />
+                          : <div className="cp-cell cp-empty">—</div>
+                        }
+                        {pB
+                          ? <PlayerCell player={pB} side="right" isBackup={!bSwappedIn} swappedIn={bSwappedIn} />
+                          : <div className="cp-cell cp-empty cp-cell-right">—</div>
+                        }
+                      </div>
+                    );
+                  })}
+                </>
+              );
+            })()}
           </>
         );
       })()}
@@ -208,7 +238,7 @@ export default function CompareTeamsPage() {
   );
 }
 
-function PlayerCell({ player, side, swappedIn, swappedOut }) {
+function PlayerCell({ player, side, swappedIn, swappedOut, isBackup }) {
   if (!player) return <div className="cp-cell cp-empty" />;
   const isRight   = side === 'right';
   const isCap     = player.role_in_team === 'captain';
@@ -216,27 +246,31 @@ function PlayerCell({ player, side, swappedIn, swappedOut }) {
   const isXI      = player.is_playing_xi === 1;
   const pts       = player.effective_pts || 0;
   const parts     = (player.name || '').split(' ');
-  const shortName = parts.length === 1 ? parts[0] : parts[0] + ' ' + parts[parts.length - 1][0] + '.';
+  const shortName = parts.length === 1 ? parts[0] : parts[0] + ' ' + parts[parts.length-1][0] + '.';
 
   function Badge() {
-    if (swappedIn)  return <span style={{fontSize:'0.55rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(29,158,117,0.2)',color:'#1D9E75',whiteSpace:'nowrap'}}>↑IN</span>;
+    if (swappedIn)  return <div className="cp-badge cp-in">↑</div>;
     if (swappedOut) return <span style={{fontSize:'0.55rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(248,113,113,0.2)',color:'#f87171',whiteSpace:'nowrap'}}>OUT</span>;
+    if (isBackup)   return <div className="cp-badge cp-bak">B</div>;
     if (isCap)      return <div className="cp-badge cp-cap">C</div>;
     if (isVC)       return <div className="cp-badge cp-vc">V</div>;
     return <div className="cp-badge cp-none" />;
   }
 
   return (
-    <div className={`cp-cell ${isRight ? 'cp-cell-right' : ''} ${swappedOut ? 'cp-swapped-out' : ''}`}>
+    <div className={`cp-cell ${isRight ? 'cp-cell-right' : ''} ${swappedOut ? 'cp-swapped-out' : ''} ${isBackup && !swappedIn ? 'cp-unused-backup' : ''}`}>
       {!isRight && <Badge />}
       <div className={`cp-info ${isRight ? 'cp-info-right' : ''}`}>
-        <div style={{display:'flex',alignItems:'center',gap:4}}>
+        <div style={{display:'flex',alignItems:'center',gap:4,flexDirection:isRight?'row-reverse':'row'}}>
           {isXI && <span style={{width:6,height:6,borderRadius:'50%',background:'#00E5FF',display:'inline-block',flexShrink:0}} />}
-          <span className="cp-name" style={{opacity: swappedOut ? 0.4 : 1}}>{shortName}</span>
+          <span className="cp-name" style={{opacity: swappedOut ? 0.4 : isBackup && !swappedIn ? 0.5 : 1}}>{shortName}</span>
         </div>
         <span className="cp-sub">{player.team?.split(' ')[0]} · {player.role?.slice(0,3)}</span>
       </div>
-      <span className={`cp-pts ${pts > 0 ? 'cp-pts-pos' : pts < 0 ? 'cp-pts-neg' : ''}`} style={{opacity: swappedOut ? 0.4 : 1}}>{pts}</span>
+      {isBackup && !swappedIn
+        ? <span className="cp-pts" style={{fontSize:'0.65rem',color:'#333',fontStyle:'italic'}}>unused</span>
+        : <span className={`cp-pts ${pts > 0 ? 'cp-pts-pos' : pts < 0 ? 'cp-pts-neg' : ''}`} style={{opacity: swappedOut ? 0.4 : 1}}>{pts}</span>
+      }
       {isRight && <Badge />}
     </div>
   );

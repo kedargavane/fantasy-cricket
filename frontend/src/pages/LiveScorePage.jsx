@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import api, { SOCKET_URL } from '../utils/api.js';
 import Spinner from '../components/common/Spinner.jsx';
+import TeamFormationView from '../components/TeamFormationView.jsx';
 import './LiveScorePage.css';
 
 const BASE_TABS = ['Leaderboard', 'Match Score', 'Compare', 'All Players'];
@@ -21,6 +22,7 @@ export default function LiveScorePage() {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [tab, setTab]           = useState(0); // will update after match loads
   const [viewTeam, setViewTeam] = useState(null);
+  const [teamViewTab, setTeamViewTab] = useState('list');
   const [snapshots, setSnapshots] = useState([]);
   const [scorecard, setScorecard] = useState(null);
   const [result, setResult]       = useState(null);
@@ -222,46 +224,57 @@ export default function LiveScorePage() {
           <span className="ls-header-sub">{viewTeam.total} pts</span>
         </div>
       </div>
+
+      {/* List / Visual tabs */}
+      <div className="ls-tabs" style={{display:'flex',alignItems:'center'}}>
+        {['list','visual'].map(t => (
+          <button key={t} className={`ls-tab ${teamViewTab === t ? 'active' : ''}`}
+            onClick={() => setTeamViewTab(t)}
+            style={{flex:'0 0 auto',minWidth:80}}>
+            {t === 'list' ? 'List' : 'Visual'}
+          </button>
+        ))}
+      </div>
+
       <div className="ls-content">
         {loadingTeam
           ? <Spinner center />
-          : <>
-              {(() => {
-                const swappedInIds  = new Set((viewTeam.swaps||[]).map(s => s.swapped_in_player_id));
-                const swappedOutIds = new Set((viewTeam.swaps||[]).map(s => s.swapped_out_player_id));
+          : (() => {
+              const swappedInIds  = new Set((viewTeam.swaps||[]).map(s => s.swapped_in_player_id));
+              const swappedOutIds = new Set((viewTeam.swaps||[]).map(s => s.swapped_out_player_id));
+              const mainPlayers   = viewTeam.players.filter(p => !p.is_backup);
+              const backupPlayers = viewTeam.players.filter(p => p.is_backup);
 
-                const mainPlayers   = viewTeam.players.filter(p => !p.is_backup);
-                const backupPlayers = viewTeam.players.filter(p => p.is_backup);
+              if (teamViewTab === 'visual') {
+                return <TeamFormationView players={viewTeam.players} swaps={viewTeam.swaps||[]} />;
+              }
 
-                // Sort mains: playing XI first (by pts desc), then non-playing (swapped out) at bottom
-                const sortedMains = [
-                  ...mainPlayers.filter(p => !swappedOutIds.has(p.id)).sort((a,b) => (b.fantasy_points||0)-(a.fantasy_points||0)),
-                  ...mainPlayers.filter(p => swappedOutIds.has(p.id)),
-                ];
+              // List view
+              const sortedMains = [
+                ...mainPlayers.filter(p => !swappedOutIds.has(p.id)).sort((a,b) => (b.fantasy_points||0)-(a.fantasy_points||0)),
+                ...mainPlayers.filter(p => swappedOutIds.has(p.id)),
+              ];
+              const sortedBackups = [
+                ...backupPlayers.filter(p => swappedInIds.has(p.id)).sort((a,b) => (b.fantasy_points||0)-(a.fantasy_points||0)),
+                ...backupPlayers.filter(p => !swappedInIds.has(p.id)),
+              ];
 
-                // Sort backups: swapped-in first, then unused bench
-                const sortedBackups = [
-                  ...backupPlayers.filter(p => swappedInIds.has(p.id)).sort((a,b) => (b.fantasy_points||0)-(a.fantasy_points||0)),
-                  ...backupPlayers.filter(p => !swappedInIds.has(p.id)),
-                ];
-
-                return <>
-                  {sortedMains.map(p => (
-                    <PlayerRow key={p.id} player={p} pts={p.fantasy_points}
-                      role={p.role_in_team} isBackup={false}
-                      isPlaying={p.is_playing_xi}
-                      swappedOut={swappedOutIds.has(p.id)} />
-                  ))}
-                  {sortedBackups.map(p => (
-                    <PlayerRow key={p.id} player={p} pts={p.fantasy_points}
-                      role={swappedInIds.has(p.id) ? p.role_in_team : null}
-                      isBackup={!swappedInIds.has(p.id)}
-                      swappedIn={swappedInIds.has(p.id)}
-                      isPlaying={p.is_playing_xi} />
-                  ))}
-                </>;
-              })()}
-            </>
+              return <>
+                {sortedMains.map(p => (
+                  <PlayerRow key={p.id} player={p} pts={p.fantasy_points}
+                    role={p.role_in_team} isBackup={false}
+                    isPlaying={p.is_playing_xi}
+                    swappedOut={swappedOutIds.has(p.id)} />
+                ))}
+                {sortedBackups.map(p => (
+                  <PlayerRow key={p.id} player={p} pts={p.fantasy_points}
+                    role={swappedInIds.has(p.id) ? p.role_in_team : null}
+                    isBackup={!swappedInIds.has(p.id)}
+                    swappedIn={swappedInIds.has(p.id)}
+                    isPlaying={p.is_playing_xi} />
+                ))}
+              </>;
+            })()
         }
       </div>
     </div>
@@ -306,22 +319,10 @@ export default function LiveScorePage() {
       </div>
 
       {/* Tabs */}
-      <div className="ls-tabs" style={{display:'flex',alignItems:'center'}}>
-        <div style={{display:'flex',flex:1,overflowX:'auto'}}>
-          {TABS.map((t, i) => (
-            <button key={t} className={`ls-tab ${tab === i ? 'active' : ''}`} onClick={() => setTab(i)}>{t}</button>
-          ))}
-        </div>
-        <button
-          onClick={loadData}
-          style={{flexShrink:0,display:'flex',alignItems:'center',gap:5,padding:'6px 10px',margin:'4px',background:'rgba(0,229,255,0.08)',border:'0.5px solid rgba(0,229,255,0.25)',borderRadius:20,color:'var(--accent-primary)',fontSize:'0.72rem',fontWeight:500,cursor:'pointer',whiteSpace:'nowrap'}}
-        >
-          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-            <path d="M12 7A5 5 0 1 1 9.5 2.5"/>
-            <path d="M9.5 1v2.5H12"/>
-          </svg>
-          Refresh
-        </button>
+      <div className="ls-tabs">
+        {TABS.map((t, i) => (
+          <button key={t} className={`ls-tab ${tab === i ? 'active' : ''}`} onClick={() => setTab(i)}>{t}</button>
+        ))}
       </div>
 
       {/* Tab 0: Result (completed only) */}
@@ -686,14 +687,7 @@ function InlineCompare({ data }) {
         {!right && (isCap ? <span style={{fontSize:'0.6rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(186,117,23,0.2)',color:'#cc8800'}}>C</span>
           : isVC ? <span style={{fontSize:'0.6rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(0,188,212,0.2)',color:'#00bcd4'}}>V</span> : null)}
         {!right && isXI && <span style={{width:5,height:5,borderRadius:'50%',background:'#00E5FF',flexShrink:0}} />}
-        <span style={{fontSize:'0.78rem',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{
-          // In narrow compare columns, show First + Last initial to fit
-          (() => {
-            const parts = (player.name || '').split(' ');
-            if (parts.length === 1) return parts[0];
-            return parts[0] + ' ' + parts[parts.length - 1][0] + '.';
-          })()
-        }</span>
+        <span style={{fontSize:'0.78rem',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{player.name.split(' ').pop()}</span>
         {right && isXI && <span style={{width:5,height:5,borderRadius:'50%',background:'#00E5FF',flexShrink:0}} />}
         {right && (isCap ? <span style={{fontSize:'0.6rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(186,117,23,0.2)',color:'#cc8800'}}>C</span>
           : isVC ? <span style={{fontSize:'0.6rem',fontWeight:700,padding:'1px 4px',borderRadius:3,background:'rgba(0,188,212,0.2)',color:'#00bcd4'}}>V</span> : null)}

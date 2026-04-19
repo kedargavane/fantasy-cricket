@@ -56,3 +56,9 @@
 .cp-pts     { font-size:0.78rem; font-weight:700; font-family:var(--font-mono); color:var(--text-muted); flex-shrink:0; min-width:24px; text-align:right; }
 .cp-pts-pos { color:var(--accent-primary); }
 .cp-pts-neg { color:#f87171; }
+
+/* Backup badges */
+.cp-badge.cp-in  { background: rgba(29,158,117,0.25); color: #1D9E75; }
+.cp-badge.cp-bak { background: rgba(255,255,255,0.05); color: #444; border: 0.5px dashed #333; }
+.cp-unused-backup { opacity: 0.7; }
+.cp-row-backup { background: rgba(0,0,0,0.15); }
