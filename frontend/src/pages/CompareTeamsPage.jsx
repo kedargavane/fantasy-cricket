@@ -102,9 +102,6 @@ export default function CompareTeamsPage() {
 
         // Common = active in both teams
         const commonIds = new Set(activeA.filter(p => activeIdsB.has(p.id)).map(p => p.id));
-        // Active = mains not swapped out + swapped-in backups
-        const activeA = A.players.filter(p => !p.swapped_out && (!p.is_backup || p.swapped_in));
-        const activeB = B.players.filter(p => !p.swapped_out && (!p.is_backup || p.swapped_in));
         const backupA = A.players.filter(p => p.is_backup && !p.swapped_in);
         const backupB = B.players.filter(p => p.is_backup && !p.swapped_in);
         // Sort active: common first, then unique
