@@ -94,36 +94,24 @@ export default function CompareTeamsPage() {
         const A = comparison.teamA;
         const B = comparison.teamB;
         const commonIds = new Set(comparison.common.playerIds);
-        const swapsA = new Map((comparison.teamA.swaps||[]).map(s => [s.swapped_out_player_id, s.swapped_in_player_id]));
-        const swapsB = new Map((comparison.teamB.swaps||[]).map(s => [s.swapped_out_player_id, s.swapped_in_player_id]));
-        const swappedInA = new Set((comparison.teamA.swaps||[]).map(s => s.swapped_in_player_id));
-        const swappedInB = new Set((comparison.teamB.swaps||[]).map(s => s.swapped_in_player_id));
-        const swappedOutA = new Set((comparison.teamA.swaps||[]).map(s => s.swapped_out_player_id));
-        const swappedOutB = new Set((comparison.teamB.swaps||[]).map(s => s.swapped_out_player_id));
+        // Active = mains not swapped out + swapped-in backups
+        const activeA = A.players.filter(p => !p.swapped_out && (!p.is_backup || p.swapped_in));
+        const activeB = B.players.filter(p => !p.swapped_out && (!p.is_backup || p.swapped_in));
+        const backupA = A.players.filter(p => p.is_backup && !p.swapped_in);
+        const backupB = B.players.filter(p => p.is_backup && !p.swapped_in);
+        const swappedOutA = A.players.filter(p => p.swapped_out);
 
-        // Separate mains and backups
-        const mainA = A.players.filter(p => !p.is_backup);
-        const mainB = B.players.filter(p => !p.is_backup);
-        const backupA = A.players.filter(p => p.is_backup);
-        const backupB = B.players.filter(p => p.is_backup);
+        // Sort active: common first, then unique
+        const commonA = activeA.filter(p => commonIds.has(p.id));
+        const uniqueA = activeA.filter(p => !commonIds.has(p.id));
+        const uniqueB = activeB.filter(p => !commonIds.has(p.id));
 
-        // Sort: common first, unique after (mains only)
-        const allA = [...mainA].sort((a,b) => (commonIds.has(b.id)?1:0) - (commonIds.has(a.id)?1:0));
-        const allB = [...mainB].sort((a,b) => (commonIds.has(b.id)?1:0) - (commonIds.has(a.id)?1:0));
+        const commonPtsA = comparison.common.ptsA;
+        const commonPtsB = comparison.common.ptsB;
+        const uniquePtsA = comparison.teamA.uniquePts;
+        const uniquePtsB = comparison.teamB.uniquePts;
+        const totalGap   = A.total_fantasy_points - B.total_fantasy_points;
 
-        // Separate into common and unique
-        const commonA  = allA.filter(p => commonIds.has(p.id));
-        const uniqueA  = allA.filter(p => !commonIds.has(p.id));
-        const uniqueB  = allB.filter(p => !commonIds.has(p.id));
-
-        // Points totals per group (include backups in total)
-        const commonPtsA  = commonA.reduce((s,p) => s + (p.effective_pts||0), 0);
-        const commonPtsB  = comparison.teamB.players.filter(p=>commonIds.has(p.id)&&!p.is_backup).reduce((s,p)=>s+(p.effective_pts||0),0);
-        const uniquePtsA  = uniqueA.reduce((s,p) => s + (p.effective_pts||0), 0) + backupA.reduce((s,p) => s + (p.effective_pts||0), 0);
-        const uniquePtsB  = uniqueB.reduce((s,p) => s + (p.effective_pts||0), 0) + backupB.reduce((s,p) => s + (p.effective_pts||0), 0);
-        const totalGap    = A.total_fantasy_points - B.total_fantasy_points;
-
-        // Max rows for unique section
         const maxUnique = Math.max(uniqueA.length, uniqueB.length);
 
         return (
@@ -165,11 +153,11 @@ export default function CompareTeamsPage() {
             </div>
 
             {commonA.map((pA, i) => {
-              const pB = comparison.teamB.players.find(p => p.id === pA.id);
+              const pB = activeB.find(p => p.id === pA.id);
               return (
                 <div key={pA.id} className="cp-row cp-row-common">
-                  <PlayerCell player={pA} side="left" />
-                  <PlayerCell player={pB} side="right" />
+                  <PlayerCell player={pA} side="left" swappedIn={pA.swapped_in} />
+                  <PlayerCell player={pB} side="right" swappedIn={pB?.swapped_in} />
                 </div>
               );
             })}
@@ -190,11 +178,11 @@ export default function CompareTeamsPage() {
                 {Array.from({ length: maxUnique }, (_, i) => (
                   <div key={i} className="cp-row cp-row-unique">
                     {uniqueA[i]
-                      ? <PlayerCell player={uniqueA[i]} side="left" />
+                      ? <PlayerCell player={uniqueA[i]} side="left" swappedIn={uniqueA[i].swapped_in} />
                       : <div className="cp-cell cp-empty">—</div>
                     }
                     {uniqueB[i]
-                      ? <PlayerCell player={uniqueB[i]} side="right" />
+                      ? <PlayerCell player={uniqueB[i]} side="right" swappedIn={uniqueB[i].swapped_in} />
                       : <div className="cp-cell cp-empty cp-cell-right">—</div>
                     }
                   </div>

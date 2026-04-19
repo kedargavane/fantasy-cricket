@@ -282,8 +282,8 @@ function getTeamDetail(db, userTeamId, userId) {
       po.name as swapped_out_name,
       pi.name as swapped_in_name
     FROM user_team_swaps uts
-    LEFT JOIN players po ON po.id = uts.swapped_out_player_id
-    LEFT JOIN players pi ON pi.id = uts.swapped_in_player_id
+    JOIN players po ON po.id = uts.swapped_out_player_id
+    JOIN players pi ON pi.id = uts.swapped_in_player_id
     WHERE uts.user_team_id = ?
   `).all(userTeamId);
 
@@ -379,13 +379,15 @@ router.get('/compare/:matchId', requireAuth, (req, res) => {
     const swappedOutIds = new Set(swaps.map(s => s.swapped_out_player_id));
     const swappedInIds  = new Set(swaps.map(s => s.swapped_in_player_id));
 
-    // Resolve active 11: mains (not swapped out) + swapped-in backups
-    const active11 = playersWithPts.filter(p => {
-      if (!p.is_backup) return !swappedOutIds.has(p.id); // main not swapped out
-      return swappedInIds.has(p.id);                      // backup that came in
-    });
+    // Return ALL players (mains + backups) so frontend can show full picture.
+    // Tag each player with swapped_in / swapped_out for display.
+    const allPlayers = playersWithPts.map(p => ({
+      ...p,
+      swapped_out: swappedOutIds.has(p.id),
+      swapped_in:  swappedInIds.has(p.id),
+    }));
 
-    return { ...ut, players: active11, swaps };
+    return { ...ut, players: allPlayers, swaps };
   }
 
   const teamA = getTeam(parseInt(userA));
@@ -395,21 +397,24 @@ router.get('/compare/:matchId', requireAuth, (req, res) => {
     return res.status(404).json({ error: 'One or both teams not found' });
   }
 
-  // Find common and unique players
-  const idsA = new Set(teamA.players.map(p => p.id));
-  const idsB = new Set(teamB.players.map(p => p.id));
+  // Active players = mains not swapped out + swapped-in backups
+  const activeA = teamA.players.filter(p => !p.swapped_out && (!p.is_backup || p.swapped_in));
+  const activeB = teamB.players.filter(p => !p.swapped_out && (!p.is_backup || p.swapped_in));
 
-  const common  = teamA.players.filter(p => idsB.has(p.id)).map(p => p.id);
+  const activeIdsA = new Set(activeA.map(p => p.id));
+  const activeIdsB = new Set(activeB.map(p => p.id));
+
+  const common    = activeA.filter(p => activeIdsB.has(p.id)).map(p => p.id);
   const commonSet = new Set(common);
 
-  const uniqueA = teamA.players.filter(p => !commonSet.has(p.id));
-  const uniqueB = teamB.players.filter(p => !idsA.has(p.id));
+  const uniqueA = activeA.filter(p => !commonSet.has(p.id));
+  const uniqueB = activeB.filter(p => !activeIdsA.has(p.id));
 
   // Stats
-  const commonPtsA = teamA.players.filter(p => commonSet.has(p.id)).reduce((s, p) => s + p.effective_pts, 0);
-  const commonPtsB = teamB.players.filter(p => commonSet.has(p.id)).reduce((s, p) => s + p.effective_pts, 0);
-  const uniquePtsA = uniqueA.reduce((s, p) => s + p.effective_pts, 0);
-  const uniquePtsB = uniqueB.reduce((s, p) => s + p.effective_pts, 0);
+  const commonPtsA = activeA.filter(p => commonSet.has(p.id)).reduce((s, p) => s + (p.effective_pts||0), 0);
+  const commonPtsB = activeB.filter(p => commonSet.has(p.id)).reduce((s, p) => s + (p.effective_pts||0), 0);
+  const uniquePtsA = uniqueA.reduce((s, p) => s + (p.effective_pts||0), 0);
+  const uniquePtsB = uniqueB.reduce((s, p) => s + (p.effective_pts||0), 0);
 
   const capA = teamA.players.find(p => p.role_in_team === 'captain');
   const capB = teamB.players.find(p => p.role_in_team === 'captain');
