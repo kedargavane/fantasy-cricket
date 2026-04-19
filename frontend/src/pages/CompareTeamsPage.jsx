@@ -93,7 +93,15 @@ export default function CompareTeamsPage() {
       {comparison && !comparison.error && !loading && (() => {
         const A = comparison.teamA;
         const B = comparison.teamB;
-        const commonIds = new Set(comparison.common.playerIds);
+
+        // Active players — mains not swapped out + swapped-in backups
+        const activeA = A.players.filter(p => !p.swapped_out && (!p.is_backup || p.swapped_in));
+        const activeB = B.players.filter(p => !p.swapped_out && (!p.is_backup || p.swapped_in));
+        const activeIdsA = new Set(activeA.map(p => p.id));
+        const activeIdsB = new Set(activeB.map(p => p.id));
+
+        // Common = active in both teams
+        const commonIds = new Set(activeA.filter(p => activeIdsB.has(p.id)).map(p => p.id));
         // Active = mains not swapped out + swapped-in backups
         const activeA = A.players.filter(p => !p.swapped_out && (!p.is_backup || p.swapped_in));
         const activeB = B.players.filter(p => !p.swapped_out && (!p.is_backup || p.swapped_in));
@@ -107,10 +115,10 @@ export default function CompareTeamsPage() {
         const swappedOutA = A.players.filter(p => p.swapped_out);
         const swappedOutB = B.players.filter(p => p.swapped_out);
 
-        const commonPtsA = comparison.common.ptsA;
-        const commonPtsB = comparison.common.ptsB;
-        const uniquePtsA = comparison.teamA.uniquePts;
-        const uniquePtsB = comparison.teamB.uniquePts;
+        const commonPtsA = commonA.reduce((s,p) => s + (p.effective_pts||0), 0);
+        const commonPtsB = activeB.filter(p => commonIds.has(p.id)).reduce((s,p) => s + (p.effective_pts||0), 0);
+        const uniquePtsA = uniqueA.reduce((s,p) => s + (p.effective_pts||0), 0);
+        const uniquePtsB = uniqueB.reduce((s,p) => s + (p.effective_pts||0), 0);
         const totalGap   = A.total_fantasy_points - B.total_fantasy_points;
 
         const maxUnique = Math.max(uniqueA.length, uniqueB.length);

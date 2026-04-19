@@ -285,7 +285,7 @@ export default function LiveScorePage() {
       {/* 💉 Injection toast */}
       {injection && (
         <div style={{position:'fixed',top:12,left:'50%',transform:'translateX(-50%)',zIndex:100,
-          background:'#1e1e2e',border:'1px solid rgba(248,113,113,0.4)',borderRadius:12,
+          background:'var(--bg-surface)',border:'1px solid rgba(212,32,32,0.3)',borderRadius:12,
           padding:'10px 16px',display:'flex',alignItems:'center',gap:8,
           boxShadow:'0 4px 20px rgba(0,0,0,0.4)',maxWidth:300,width:'90%'}}>
           <span style={{fontSize:'1.2rem'}}>💉</span>
@@ -319,10 +319,22 @@ export default function LiveScorePage() {
       </div>
 
       {/* Tabs */}
-      <div className="ls-tabs">
-        {TABS.map((t, i) => (
-          <button key={t} className={`ls-tab ${tab === i ? 'active' : ''}`} onClick={() => setTab(i)}>{t}</button>
-        ))}
+      <div className="ls-tabs" style={{display:'flex',alignItems:'center'}}>
+        <div style={{display:'flex',flex:1,overflowX:'auto'}}>
+          {TABS.map((t, i) => (
+            <button key={t} className={`ls-tab ${tab === i ? 'active' : ''}`} onClick={() => setTab(i)}>{t}</button>
+          ))}
+        </div>
+        <button
+          onClick={loadData}
+          style={{flexShrink:0,display:'flex',alignItems:'center',gap:5,padding:'6px 10px',margin:'4px',background:'rgba(26,111,212,0.08)',border:'0.5px solid rgba(26,111,212,0.25)',borderRadius:20,color:'var(--accent-primary)',fontSize:'0.72rem',fontWeight:500,cursor:'pointer',whiteSpace:'nowrap'}}
+        >
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <path d="M12 7A5 5 0 1 1 9.5 2.5"/>
+            <path d="M9.5 1v2.5H12"/>
+          </svg>
+          Refresh
+        </button>
       </div>
 
       {/* Tab 0: Result (completed only) */}
@@ -754,7 +766,7 @@ function InlineCompare({ data }) {
 function PointsChart({ series }) {
   const canvasRef = useRef(null);
   const chartRef  = useRef(null);
-  const colors = ['#00e5ff','#a78bfa','#4ade80','#f472b6','#fb923c','#facc15','#60a5fa'];
+  const colors = ['#1a6fd4','#6b3fd4','#1a8a4a','#c0006e','#d45a00','#c08000','#0060a0'];
   const maxOver = Math.max(...series.flatMap(s => s.data.map(d => d.over)));
 
   function interp(data, over) {
@@ -913,7 +925,7 @@ function PlayerRow({ player, pts, role, isBackup, isPlaying, swappedIn, swappedO
       <div className="ls-player-left">
         {role === 'captain'      && <span className="ls-badge ls-cap">C</span>}
         {role === 'vice_captain' && <span className="ls-badge ls-vc">V</span>}
-        {swappedIn  && !role     && <span className="ls-badge" style={{background:'rgba(29,158,117,0.2)',color:'#1D9E75',fontSize:'0.6rem'}}>↑IN</span>}
+        {swappedIn  && !role     && <span className="ls-badge" style={{background:'rgba(26,138,74,0.12)',color:'var(--accent-green)',fontSize:'0.6rem'}}>↑IN</span>}
         {swappedOut              && <span className="ls-badge" style={{background:'rgba(248,113,113,0.2)',color:'#f87171',fontSize:'0.6rem'}}>OUT</span>}
         {isBackup && !swappedIn  && <span className="ls-badge" style={{background:'rgba(186,117,23,0.2)',color:'#cc8800',fontSize:'0.6rem'}}>B</span>}
         {!role && !swappedIn && !swappedOut && !isBackup && <span className="ls-badge-empty" />}
