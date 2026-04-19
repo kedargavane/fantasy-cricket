@@ -105,6 +105,9 @@ export default function CompareTeamsPage() {
         const commonA = activeA.filter(p => commonIds.has(p.id));
         const uniqueA = activeA.filter(p => !commonIds.has(p.id));
         const uniqueB = activeB.filter(p => !commonIds.has(p.id));
+        // Swapped out players shown separately (faded, with OUT badge)
+        const swappedOutA = A.players.filter(p => p.swapped_out);
+        const swappedOutB = B.players.filter(p => p.swapped_out);
 
         const commonPtsA = comparison.common.ptsA;
         const commonPtsB = comparison.common.ptsB;
@@ -189,6 +192,30 @@ export default function CompareTeamsPage() {
                 ))}
               </>
             )}
+
+            {/* Swapped out section */}
+            {(swappedOutA.length > 0 || swappedOutB.length > 0) && (() => {
+              const maxOut = Math.max(swappedOutA.length, swappedOutB.length);
+              return (
+                <>
+                  <div className="cp-group-label" style={{opacity:0.6}}>
+                    <span>Swapped out</span>
+                  </div>
+                  {Array.from({ length: maxOut }, (_, i) => (
+                    <div key={i} className="cp-row" style={{opacity:0.5}}>
+                      {swappedOutA[i]
+                        ? <PlayerCell player={swappedOutA[i]} side="left" swappedOut={true} />
+                        : <div className="cp-cell cp-empty">—</div>
+                      }
+                      {swappedOutB[i]
+                        ? <PlayerCell player={swappedOutB[i]} side="right" swappedOut={true} />
+                        : <div className="cp-cell cp-empty cp-cell-right">—</div>
+                      }
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
 
             {/* Backups section */}
             {(backupA.length > 0 || backupB.length > 0) && (() => {
