@@ -392,11 +392,8 @@ export default function TeamPickerPage() {
                         <div key={i} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px',borderBottom:'0.5px solid var(--border)'}}>
                           <div style={{flex:1,fontSize:9,color:'var(--text-secondary)'}}>{m.team_a} vs {m.team_b}</div>
                           <div style={{fontSize:8,color:'var(--text-muted)'}}>{new Date(m.start_time).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</div>
-                          {m.innings?.map((inn, j) => (
-                            <div key={j} style={{fontSize:9,fontWeight:600,color:j===0?'var(--text-primary)':'var(--text-muted)',minWidth:40,textAlign:'right'}}>
-                              {inn.runs}/{inn.wickets}
-                            </div>
-                          ))}
+                          {m.innings1_score && <div style={{fontSize:9,fontWeight:600,color:'var(--text-primary)',minWidth:48,textAlign:'right'}}>{m.innings1_score.split(' ')[0]}</div>}
+                          {m.innings2_score && <div style={{fontSize:9,color:'var(--text-muted)',minWidth:48,textAlign:'right'}}>{m.innings2_score.split(' ')[0]}</div>}
                         </div>
                       ))
                     }

@@ -53,21 +53,17 @@ async function syncPlayingXi(matchId, sportmonksFixtureId) {
     'SELECT id FROM players WHERE external_player_id = ?'
   );
   const updateXi = db.prepare(
-    'UPDATE match_squads SET is_playing_xi = ?, is_substitute = ? WHERE match_id = ? AND player_id = ?'
+    'UPDATE match_squads SET is_playing_xi = ? WHERE match_id = ? AND player_id = ?'
   );
   const resetXi = db.prepare(
-    'UPDATE match_squads SET is_playing_xi = 0, is_substitute = 0 WHERE match_id = ?'
+    'UPDATE match_squads SET is_playing_xi = 0 WHERE match_id = ?'
   );
 
   const doSync = db.transaction(() => {
     resetXi.run(matchId);
     for (const p of lineup) {
       const player = getPlayer.get(String(p.externalPlayerId));
-      if (player) {
-        const xi  = p.isPlayingXi  ? 1 : 0;
-        const sub = p.isSubstitute ? 1 : 0;
-        updateXi.run(xi, sub, matchId, player.id);
-      }
+      if (player) updateXi.run(1, matchId, player.id);
     }
   });
   doSync();
@@ -95,45 +91,8 @@ async function syncPlayingXi(matchId, sportmonksFixtureId) {
   });
   insertXi();
 
-  const { swapResults } = await processAutoSwaps(matchId);
+  await processAutoSwaps(matchId);
   recomputeTeamPoints(matchId);
-
-  // Send swap notifications
-  try {
-    const webpush = require('web-push');
-    const match = db.prepare('SELECT team_a, team_b FROM matches WHERE id = ?').get(matchId);
-    for (const result of (swapResults || [])) {
-      const subs = db.prepare(
-        'SELECT * FROM push_subscriptions WHERE user_id = ?'
-      ).all(result.userId);
-      if (!subs.length) continue;
-
-      let body;
-      if (result.swaps.length > 0) {
-        const swapText = result.swaps.map(s => `${s.out} → ${s.in}`).join(', ');
-        body = `Auto-swap applied: ${swapText}`;
-      } else {
-        body = `All your players are in the XI — no swap needed!`;
-      }
-
-      const payload = JSON.stringify({
-        title: `🔄 ${match.team_a} vs ${match.team_b} — Team Update`,
-        body,
-        type: 'swap_update',
-        matchId,
-      });
-
-      for (const sub of subs) {
-        webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh_key, auth: sub.auth_key } },
-          payload
-        ).catch(() => {});
-      }
-    }
-  } catch(e) {
-    console.warn('[swap notify]', e.message);
-  }
-
   return { confirmed: true, count: lineup.length };
 }
 
@@ -165,9 +124,8 @@ function upsertStats(matchId, playerStats) {
        overs_bowled, wickets, runs_conceded, maidens,
        catches, stumpings, run_outs, fantasy_points,
        bowler_name, catcher_name, runout_name, scoreboard, sort_order, is_active, batting_team_id, match_team,
-       bowler_dismissal_bonus,
        updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(match_id, player_id) DO UPDATE SET
       runs           = excluded.runs,
       balls_faced    = excluded.balls_faced,
@@ -189,7 +147,6 @@ function upsertStats(matchId, playerStats) {
       scoreboard     = excluded.scoreboard,
       sort_order     = excluded.sort_order,
       is_active      = excluded.is_active,
-      bowler_dismissal_bonus = excluded.bowler_dismissal_bonus,
       updated_at     = datetime('now')
   `);
 
@@ -266,8 +223,7 @@ function upsertStats(matchId, playerStats) {
         stat.sortOrder || 99,
         stat.active ? 1 : 0,
         (stat.battingTeamId != null && stat.battingTeamId !== undefined) ? stat.battingTeamId : null,
-        stat.team || null,
-        stat.bowlerDismissalType ? 8 : 0
+        stat.team || null
       );
     }
   });
@@ -335,20 +291,19 @@ function recomputeTeamPoints(matchId) {
         const role = player_id === captainId ? 'captain' : player_id === vcId ? 'vice_captain' : 'normal';
         const { total } = calculateFantasyPoints(
           {
-            isPlayingXi:          true,
-            runs:                 stats.runs,
-            ballsFaced:           stats.balls_faced,
-            fours:                stats.fours,
-            sixes:                stats.sixes,
-            dismissalType:        stats.dismissal_type,
-            oversBowled:          stats.overs_bowled,
-            wickets:              stats.wickets,
-            runsConceded:         stats.runs_conceded,
-            maidens:              stats.maidens,
-            catches:              stats.catches,
-            stumpings:            stats.stumpings,
-            runOuts:              stats.run_outs,
-            bowlerDismissalType:  stats.bowler_dismissal_bonus > 0 ? 'bowled' : null,
+            isPlayingXi:   true,
+            runs:          stats.runs,
+            ballsFaced:    stats.balls_faced,
+            fours:         stats.fours,
+            sixes:         stats.sixes,
+            dismissalType: stats.dismissal_type,
+            oversBowled:   stats.overs_bowled,
+            wickets:       stats.wickets,
+            runsConceded:  stats.runs_conceded,
+            maidens:       stats.maidens,
+            catches:       stats.catches,
+            stumpings:     stats.stumpings,
+            runOuts:       stats.run_outs,
           },
           role,
           DEFAULT_SCORING_CONFIG
@@ -429,9 +384,19 @@ async function syncLiveMatch(matchId, sportmonksFixtureId) {
       r: s.r, w: s.w, o: s.o, inning: s.inning,
     })));
 
+    // Store innings scores for venue history
+    const innings = matchInfo.score || [];
+    const inn1 = innings.find(s => s.inning === 1);
+    const inn2 = innings.find(s => s.inning === 2);
+    const inn1Score = inn1 ? `${inn1.r}/${inn1.w} (${inn1.o} ov)` : null;
+    const inn2Score = inn2 ? `${inn2.r}/${inn2.w} (${inn2.o} ov)` : null;
+
     db.prepare(`
-      UPDATE matches SET status = ?, last_synced = datetime('now'), live_score = ? WHERE id = ?
-    `).run(newStatus, scoreStr, matchId);
+      UPDATE matches SET status = ?, last_synced = datetime('now'), live_score = ?,
+        innings1_score = COALESCE(?, innings1_score),
+        innings2_score = COALESCE(?, innings2_score)
+      WHERE id = ?
+    `).run(newStatus, scoreStr, inn1Score, inn2Score, matchId);
 
     console.log(`[syncLiveMatch] matchId=${matchId}: ${playerStats.length} players, status=${newStatus}`);
     return { success: true, status: newStatus, playersUpdated: playerStats.length };

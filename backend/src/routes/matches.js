@@ -255,52 +255,40 @@ router.get('/:id/venue-history', requireAuth, (req, res) => {
   ).get(match.season_id, req.user.id);
   if (!member) return res.status(403).json({ error: 'Access denied' });
 
-  // Use venue_info as primary key (venue field is often empty)
   const venueKey = match.venue_info || match.venue;
   if (!venueKey) return res.json({ venue: null, history: [] });
 
-  // Extract stadium name from venue_info (first part before comma)
+  // Match by stadium name (first segment before comma)
   const stadiumName = venueKey.split(',')[0].trim();
 
-  // Find completed matches at same venue this season (excluding current match)
-  // Match on venue_info containing the same stadium name
   const history = db.prepare(`
-    SELECT id, team_a, team_b, start_time, live_score, venue_info
+    SELECT id, team_a, team_b, start_time, venue_info, innings1_score, innings2_score
     FROM matches
     WHERE season_id = ?
       AND status = 'completed'
       AND id != ?
-      AND (venue_info LIKE ? OR venue = ?)
+      AND venue_info LIKE ?
     ORDER BY start_time DESC
     LIMIT 5
-  `).all(match.season_id, matchId, `%${stadiumName}%`, venueKey);
+  `).all(match.season_id, matchId, `%${stadiumName}%`);
 
-  // Parse scores from live_score JSON
-  const parsed = history.map(m => {
-    let innings = [];
-    if (m.live_score) {
-      try {
-        const parts = m.live_score.split(' | ');
-        innings = parts.map(p => {
-          const match2 = p.match(/(.+?)\s+(\d+)\/(\d+)\s*\(([\d.]+)/);
-          return match2 ? { team: match2[1].trim(), runs: match2[2], wickets: match2[3], overs: match2[4] } : null;
-        }).filter(Boolean);
-      } catch {}
-    }
-    return { ...m, innings };
+  // Compute avg, high, low from stored innings scores
+  const allRuns = history.flatMap(m => {
+    const runs = [];
+    if (m.innings1_score) { const r = parseInt(m.innings1_score); if (!isNaN(r)) runs.push(r); }
+    if (m.innings2_score) { const r = parseInt(m.innings2_score); if (!isNaN(r)) runs.push(r); }
+    return runs;
   });
 
-  // Compute avg, high, low from innings
-  const allScores = parsed.flatMap(m => m.innings.map(i => parseInt(i.runs)));
-  const avg   = allScores.length ? Math.round(allScores.reduce((a,b) => a+b, 0) / allScores.length) : null;
-  const high  = allScores.length ? Math.max(...allScores) : null;
-  const low   = allScores.length ? Math.min(...allScores) : null;
+  const avg  = allRuns.length ? Math.round(allRuns.reduce((a,b) => a+b,0) / allRuns.length) : null;
+  const high = allRuns.length ? Math.max(...allRuns) : null;
+  const low  = allRuns.length ? Math.min(...allRuns) : null;
 
   return res.json({
-    venue: venueKey,
+    venue: stadiumName,
     venue_info: match.venue_info,
     avg, high, low,
-    history: parsed,
+    history,
   });
 });
 
