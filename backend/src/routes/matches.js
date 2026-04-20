@@ -91,15 +91,26 @@ router.get('/:id/squad', requireAuth, (req, res) => {
   ).get(match.season_id, req.user.id);
   if (!member) return res.status(403).json({ error: 'Access denied' });
 
+  const seasonId = match.season_id;
+
   const squad = db.prepare(`
     SELECT
       p.id, p.name, p.team, p.role, p.external_player_id,
-      ms.is_playing_xi
+      ms.is_playing_xi, ms.is_substitute,
+      COALESCE(SUM(pms.fantasy_points), 0) as season_pts,
+      CASE WHEN COUNT(pms.match_id) > 0
+        THEN ROUND(CAST(SUM(pms.fantasy_points) AS REAL) / COUNT(pms.match_id))
+        ELSE 0 END as season_avg
     FROM match_squads ms
     JOIN players p ON p.id = ms.player_id
+    LEFT JOIN player_match_stats pms ON pms.player_id = p.id
+      AND pms.match_id IN (
+        SELECT id FROM matches WHERE season_id = ? AND status = 'completed'
+      )
     WHERE ms.match_id = ?
-    ORDER BY p.team, ms.is_playing_xi DESC, p.name
-  `).all(matchId);
+    GROUP BY p.id
+    ORDER BY p.team, ms.is_playing_xi DESC, ms.is_substitute ASC, p.name
+  `).all(seasonId, matchId);
 
   return res.json({ squad });
 });
