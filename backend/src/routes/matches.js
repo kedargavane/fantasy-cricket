@@ -303,4 +303,46 @@ router.get('/:id/venue-history', requireAuth, (req, res) => {
   });
 });
 
+// ── GET /api/matches/player/:playerId/season/:seasonId/stats ─────────────────
+router.get('/player/:playerId/season/:seasonId/stats', requireAuth, (req, res) => {
+  const db       = getDb();
+  const playerId = parseInt(req.params.playerId, 10);
+  const seasonId = parseInt(req.params.seasonId, 10);
+
+  const member = db.prepare(
+    'SELECT id FROM season_memberships WHERE season_id = ? AND user_id = ?'
+  ).get(seasonId, req.user.id);
+  if (!member) return res.status(403).json({ error: 'Access denied' });
+
+  const player = db.prepare('SELECT id, name, team, role FROM players WHERE id = ?').get(playerId);
+  if (!player) return res.status(404).json({ error: 'Player not found' });
+
+  const matches = db.prepare(`
+    SELECT
+      pms.fantasy_points, pms.runs, pms.balls_faced, pms.fours, pms.sixes,
+      pms.overs_bowled, pms.wickets, pms.runs_conceded, pms.maidens,
+      pms.catches, pms.stumpings, pms.run_outs,
+      m.id as match_id, m.team_a, m.team_b, m.start_time
+    FROM player_match_stats pms
+    JOIN matches m ON m.id = pms.match_id
+    WHERE pms.player_id = ? AND m.season_id = ? AND m.status = 'completed'
+    ORDER BY m.start_time DESC
+    LIMIT 5
+  `).all(playerId, seasonId);
+
+  const allMatches = db.prepare(`
+    SELECT COUNT(*) as total, SUM(pms.fantasy_points) as total_pts
+    FROM player_match_stats pms
+    JOIN matches m ON m.id = pms.match_id
+    WHERE pms.player_id = ? AND m.season_id = ? AND m.status = 'completed'
+  `).get(playerId, seasonId);
+
+  const totalMatches = allMatches?.total || 0;
+  const totalPts     = allMatches?.total_pts || 0;
+  const avgPts       = totalMatches > 0 ? Math.round(totalPts / totalMatches) : 0;
+  const bestPts      = matches.length > 0 ? Math.max(...matches.map(m => m.fantasy_points || 0)) : 0;
+
+  return res.json({ player, totalMatches, totalPts, avgPts, bestPts, last5: matches });
+});
+
 module.exports = router;
