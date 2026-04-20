@@ -255,19 +255,25 @@ router.get('/:id/venue-history', requireAuth, (req, res) => {
   ).get(match.season_id, req.user.id);
   if (!member) return res.status(403).json({ error: 'Access denied' });
 
-  if (!match.venue) return res.json({ venue: null, history: [] });
+  // Use venue_info as primary key (venue field is often empty)
+  const venueKey = match.venue_info || match.venue;
+  if (!venueKey) return res.json({ venue: null, history: [] });
+
+  // Extract stadium name from venue_info (first part before comma)
+  const stadiumName = venueKey.split(',')[0].trim();
 
   // Find completed matches at same venue this season (excluding current match)
+  // Match on venue_info containing the same stadium name
   const history = db.prepare(`
     SELECT id, team_a, team_b, start_time, live_score, venue_info
     FROM matches
     WHERE season_id = ?
       AND status = 'completed'
-      AND venue = ?
       AND id != ?
+      AND (venue_info LIKE ? OR venue = ?)
     ORDER BY start_time DESC
     LIMIT 5
-  `).all(match.season_id, match.venue, matchId);
+  `).all(match.season_id, matchId, `%${stadiumName}%`, venueKey);
 
   // Parse scores from live_score JSON
   const parsed = history.map(m => {
@@ -291,7 +297,7 @@ router.get('/:id/venue-history', requireAuth, (req, res) => {
   const low   = allScores.length ? Math.min(...allScores) : null;
 
   return res.json({
-    venue: match.venue,
+    venue: venueKey,
     venue_info: match.venue_info,
     avg, high, low,
     history: parsed,
