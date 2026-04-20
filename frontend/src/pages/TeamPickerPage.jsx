@@ -73,6 +73,9 @@ export default function TeamPickerPage() {
   const [error, setError]       = useState('');
   const [filter, setFilter]       = useState('ALL');
   const [sortByPts, setSortByPts] = useState(false);
+  const [venueHistory, setVenueHistory] = useState(null);
+  const [showVenue, setShowVenue]       = useState(false);
+  const [loadingVenue, setLoadingVenue] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [playerStats, setPlayerStats]       = useState(null);
   const [loadingStats, setLoadingStats]     = useState(false);
@@ -168,6 +171,17 @@ export default function TeamPickerPage() {
     });
     if (sortByPts) result = [...result].sort((a, b) => (b.season_pts || 0) - (a.season_pts || 0));
     return result;
+  }
+
+  async function loadVenueHistory() {
+    if (venueHistory) { setShowVenue(v => !v); return; }
+    setLoadingVenue(true);
+    setShowVenue(true);
+    try {
+      const res = await api.get(`/matches/${matchId}/venue-history`);
+      setVenueHistory(res.data);
+    } catch {}
+    finally { setLoadingVenue(false); }
   }
 
   async function loadPlayerStats(player) {
@@ -332,6 +346,66 @@ export default function TeamPickerPage() {
           {sortByPts ? '↓ Pts' : 'Sort'}
         </button>
       </div>
+
+      {/* Venue chip */}
+      {(match?.venue_info || match?.venue) && (
+        <div>
+          <div
+            onClick={loadVenueHistory}
+            style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg-surface)',border:'0.5px solid var(--border)',borderRadius:8,margin:'6px 0',padding:'8px 10px',cursor:'pointer'}}
+          >
+            <div style={{width:26,height:26,borderRadius:6,background:'var(--bg-elevated)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--accent-primary)" strokeWidth="1.5" strokeLinecap="round">
+                <ellipse cx="8" cy="6" rx="5" ry="3"/>
+                <path d="M3 6v4c0 1.66 2.24 3 5 3s5-1.34 5-3V6"/>
+              </svg>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:10,fontWeight:500,color:'var(--text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{match.venue_info || match.venue}</div>
+              <div style={{fontSize:8,color:'var(--text-muted)',marginTop:1}}>
+                {venueHistory ? `avg ${venueHistory.avg || '—'} · ${venueHistory.history?.length || 0} matches this season` : 'tap for venue history'}
+              </div>
+            </div>
+            <span style={{fontSize:10,color:'var(--accent-primary)',flexShrink:0}}>{showVenue ? '▲' : '▼'}</span>
+          </div>
+
+          {showVenue && (
+            <div style={{background:'var(--bg-surface)',border:'0.5px solid var(--border)',borderRadius:8,marginBottom:6,overflow:'hidden'}}>
+              {loadingVenue
+                ? <div style={{padding:12,textAlign:'center'}}><div className="spinner" style={{width:16,height:16,margin:'0 auto'}} /></div>
+                : venueHistory && (<>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',borderBottom:'0.5px solid var(--border)'}}>
+                      {[
+                        {label:'avg score', value: venueHistory.avg || '—'},
+                        {label:'highest',   value: venueHistory.high || '—'},
+                        {label:'lowest',    value: venueHistory.low || '—'},
+                      ].map(s => (
+                        <div key={s.label} style={{padding:'7px 4px',textAlign:'center',borderRight:'0.5px solid var(--border)'}}>
+                          <div style={{fontSize:13,fontWeight:700,color:'var(--accent-primary)'}}>{s.value}</div>
+                          <div style={{fontSize:8,color:'var(--text-muted)',marginTop:1}}>{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {venueHistory.history?.length === 0
+                      ? <div style={{padding:'10px',textAlign:'center',fontSize:10,color:'var(--text-muted)'}}>No previous matches at this venue this season</div>
+                      : venueHistory.history?.map((m, i) => (
+                        <div key={i} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px',borderBottom:'0.5px solid var(--border)'}}>
+                          <div style={{flex:1,fontSize:9,color:'var(--text-secondary)'}}>{m.team_a} vs {m.team_b}</div>
+                          <div style={{fontSize:8,color:'var(--text-muted)'}}>{new Date(m.start_time).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</div>
+                          {m.innings?.map((inn, j) => (
+                            <div key={j} style={{fontSize:9,fontWeight:600,color:j===0?'var(--text-primary)':'var(--text-muted)',minWidth:40,textAlign:'right'}}>
+                              {inn.runs}/{inn.wickets}
+                            </div>
+                          ))}
+                        </div>
+                      ))
+                    }
+                  </>)
+              }
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Legend */}
       <div className="picker-legend">

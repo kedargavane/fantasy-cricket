@@ -91,27 +91,15 @@ router.get('/:id/squad', requireAuth, (req, res) => {
   ).get(match.season_id, req.user.id);
   if (!member) return res.status(403).json({ error: 'Access denied' });
 
-  // Get season_id for this match to compute season stats
-  const seasonId = match.season_id;
-
   const squad = db.prepare(`
     SELECT
       p.id, p.name, p.team, p.role, p.external_player_id,
-      ms.is_playing_xi, ms.is_substitute,
-      COALESCE(SUM(pms.fantasy_points), 0) as season_pts,
-      CASE WHEN COUNT(pms.match_id) > 0
-        THEN ROUND(CAST(SUM(pms.fantasy_points) AS REAL) / COUNT(pms.match_id))
-        ELSE 0 END as season_avg
+      ms.is_playing_xi
     FROM match_squads ms
     JOIN players p ON p.id = ms.player_id
-    LEFT JOIN player_match_stats pms ON pms.player_id = p.id
-      AND pms.match_id IN (
-        SELECT id FROM matches WHERE season_id = ? AND status = 'completed'
-      )
     WHERE ms.match_id = ?
-    GROUP BY p.id
-    ORDER BY p.team, ms.is_playing_xi DESC, ms.is_substitute ASC, p.name
-  `).all(seasonId, matchId);
+    ORDER BY p.team, ms.is_playing_xi DESC, p.name
+  `).all(matchId);
 
   return res.json({ squad });
 });
@@ -253,53 +241,60 @@ router.get('/:id/rank-snapshots', requireAuth, (req, res) => {
   return res.json({ matchId, series: Object.values(series) });
 });
 
-// ── GET /api/matches/player/:playerId/season/:seasonId/stats ─────────────────
-// Returns player's stats across all completed matches in a season
-router.get('/player/:playerId/season/:seasonId/stats', requireAuth, (req, res) => {
-  const db       = getDb();
-  const playerId = parseInt(req.params.playerId, 10);
-  const seasonId = parseInt(req.params.seasonId, 10);
+// ── GET /api/matches/:id/venue-history ───────────────────────────────────────
+// Returns last 5 completed matches at the same venue this season
+router.get('/:id/venue-history', requireAuth, (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.id, 10);
+
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
 
   const member = db.prepare(
     'SELECT id FROM season_memberships WHERE season_id = ? AND user_id = ?'
-  ).get(seasonId, req.user.id);
+  ).get(match.season_id, req.user.id);
   if (!member) return res.status(403).json({ error: 'Access denied' });
 
-  const player = db.prepare('SELECT id, name, team, role FROM players WHERE id = ?').get(playerId);
-  if (!player) return res.status(404).json({ error: 'Player not found' });
+  if (!match.venue) return res.json({ venue: null, history: [] });
 
-  const matches = db.prepare(`
-    SELECT
-      pms.fantasy_points, pms.runs, pms.balls_faced, pms.fours, pms.sixes,
-      pms.overs_bowled, pms.wickets, pms.runs_conceded, pms.maidens,
-      pms.catches, pms.stumpings, pms.run_outs,
-      m.id as match_id, m.team_a, m.team_b, m.start_time, m.status
-    FROM player_match_stats pms
-    JOIN matches m ON m.id = pms.match_id
-    WHERE pms.player_id = ? AND m.season_id = ? AND m.status = 'completed'
-    ORDER BY m.start_time DESC
+  // Find completed matches at same venue this season (excluding current match)
+  const history = db.prepare(`
+    SELECT id, team_a, team_b, start_time, live_score, venue_info
+    FROM matches
+    WHERE season_id = ?
+      AND status = 'completed'
+      AND venue = ?
+      AND id != ?
+    ORDER BY start_time DESC
     LIMIT 5
-  `).all(playerId, seasonId);
+  `).all(match.season_id, match.venue, matchId);
 
-  const allMatches = db.prepare(`
-    SELECT COUNT(*) as total, SUM(pms.fantasy_points) as total_pts
-    FROM player_match_stats pms
-    JOIN matches m ON m.id = pms.match_id
-    WHERE pms.player_id = ? AND m.season_id = ? AND m.status = 'completed'
-  `).get(playerId, seasonId);
+  // Parse scores from live_score JSON
+  const parsed = history.map(m => {
+    let innings = [];
+    if (m.live_score) {
+      try {
+        const parts = m.live_score.split(' | ');
+        innings = parts.map(p => {
+          const match2 = p.match(/(.+?)\s+(\d+)\/(\d+)\s*\(([\d.]+)/);
+          return match2 ? { team: match2[1].trim(), runs: match2[2], wickets: match2[3], overs: match2[4] } : null;
+        }).filter(Boolean);
+      } catch {}
+    }
+    return { ...m, innings };
+  });
 
-  const totalMatches = allMatches?.total || 0;
-  const totalPts     = allMatches?.total_pts || 0;
-  const avgPts       = totalMatches > 0 ? Math.round(totalPts / totalMatches) : 0;
-  const bestPts      = matches.length > 0 ? Math.max(...matches.map(m => m.fantasy_points || 0)) : 0;
+  // Compute avg, high, low from innings
+  const allScores = parsed.flatMap(m => m.innings.map(i => parseInt(i.runs)));
+  const avg   = allScores.length ? Math.round(allScores.reduce((a,b) => a+b, 0) / allScores.length) : null;
+  const high  = allScores.length ? Math.max(...allScores) : null;
+  const low   = allScores.length ? Math.min(...allScores) : null;
 
   return res.json({
-    player,
-    totalMatches,
-    totalPts,
-    avgPts,
-    bestPts,
-    last5: matches,
+    venue: match.venue,
+    venue_info: match.venue_info,
+    avg, high, low,
+    history: parsed,
   });
 });
 

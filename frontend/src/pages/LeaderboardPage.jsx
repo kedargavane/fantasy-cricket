@@ -14,8 +14,9 @@ const SORT_OPTIONS = [
 export default function LeaderboardPage() {
   const { activeSeason, user } = useAuth();
   const [data, setData]     = useState(null);
+  const [form, setForm]     = useState({});
   const [loading, setLoading] = useState(true);
-  const [sortBy, setSortBy] = useState('season_score');
+  const [sortBy, setSortBy] = useState('net_units');
 
   useEffect(() => {
     if (!activeSeason) return;
@@ -25,8 +26,17 @@ export default function LeaderboardPage() {
   async function loadLeaderboard() {
     setLoading(true);
     try {
-      const res = await api.get(`/leaderboard/season/${activeSeason.id}`);
-      setData(res.data);
+      const [lbRes, formRes] = await Promise.all([
+        api.get(`/leaderboard/season/${activeSeason.id}`),
+        api.get(`/leaderboard/season/${activeSeason.id}/form`),
+      ]);
+      setData(lbRes.data);
+      // Index form by user_id
+      const formMap = {};
+      for (const f of (formRes.data.form || [])) {
+        formMap[f.user_id] = f.last5;
+      }
+      setForm(formMap);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
@@ -119,6 +129,18 @@ export default function LeaderboardPage() {
                       </span>
                     )}
                   </div>
+                  {/* Form dots — last 5 match ranks */}
+                  {form[entry.user_id] && (
+                    <div style={{display:'flex',gap:3,margin:'4px 0 2px'}}>
+                      {form[entry.user_id].map((f, i) => {
+                        if (!f) return <div key={i} style={{width:16,height:16,borderRadius:'50%',background:'#eef1f8',display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,color:'#c0c8e0',fontWeight:700}}>—</div>;
+                        const r = f.rank || 99;
+                        const bg = r === 1 ? '#1a6fd4' : r <= 3 ? '#6baed6' : r >= (sorted.length - 1) ? '#fde8e8' : '#eef1f8';
+                        const col = r === 1 ? '#fff' : r <= 3 ? '#fff' : r >= (sorted.length - 1) ? '#d42020' : '#4a5a7a';
+                        return <div key={i} style={{width:16,height:16,borderRadius:'50%',background:bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,color:col,fontWeight:700}}>{r}</div>;
+                      })}
+                    </div>
+                  )}
                   {/* Mini bar chart — net units relative to max */}
                   <div className="lbe-bar-track">
                     <div

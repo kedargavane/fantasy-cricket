@@ -31,6 +31,12 @@ router.get('/season/:seasonId', requireAuth, (req, res) => {
     SELECT
       sl.*,
       u.name,
+      -- Season score = net_units / matches_played (avg profit per match)
+      CASE
+        WHEN sl.matches_played > 0
+        THEN ROUND(CAST(sl.net_units AS REAL) / sl.matches_played, 2)
+        ELSE 0
+      END as season_score,
       CASE
         WHEN sl.matches_played >= ? THEN 1
         ELSE 0
@@ -40,8 +46,8 @@ router.get('/season/:seasonId', requireAuth, (req, res) => {
     WHERE sl.season_id = ?
     ORDER BY
       is_eligible DESC,
+      season_score DESC,
       sl.net_units DESC,
-      sl.total_fantasy_points DESC,
       sl.top_finishes DESC
   `).all(minMatchesRequired, seasonId);
 
@@ -50,7 +56,7 @@ router.get('/season/:seasonId', requireAuth, (req, res) => {
   const result = leaderboard.map((entry, idx) => {
     if (entry.is_eligible) {
       if (idx > 0 && leaderboard[idx - 1].is_eligible &&
-          leaderboard[idx - 1].net_units === entry.net_units) {
+          leaderboard[idx - 1].season_score === entry.season_score) {
         entry.display_rank = leaderboard[idx - 1].display_rank;
       } else {
         entry.display_rank = rank;
@@ -102,13 +108,7 @@ router.get('/match/:matchId/result', requireAuth, (req, res) => {
     JOIN users u    ON u.id   = ut.user_id
     JOIN players cp  ON cp.id  = COALESCE(ut.resolved_captain_id, ut.captain_id)
     JOIN players vcp ON vcp.id = COALESCE(ut.resolved_vice_captain_id, ut.vice_captain_id)
-    LEFT JOIN (
-      SELECT user_team_id, gross_units, net_units, rank
-      FROM prize_distributions
-      WHERE id IN (
-        SELECT MAX(id) FROM prize_distributions GROUP BY user_team_id
-      )
-    ) pd ON pd.user_team_id = ut.id
+    LEFT JOIN prize_distributions pd ON pd.user_team_id = ut.id
     WHERE ut.match_id = ?
     ORDER BY ut.total_fantasy_points DESC
   `).all(matchId);
@@ -165,5 +165,57 @@ router.get('/user/:userId/history', requireAuth, (req, res) => {
 
   return res.json({ userId, history });
 });
+
+// ── GET /api/leaderboard/season/:seasonId/form ───────────────────────────────
+// Returns last 5 match ranks for each user in the season
+router.get('/season/:seasonId/form', requireAuth, (req, res) => {
+  const db = getDb();
+  const seasonId = parseInt(req.params.seasonId, 10);
+
+  const member = db.prepare(
+    'SELECT id FROM season_memberships WHERE season_id = ? AND user_id = ?'
+  ).get(seasonId, req.user.id);
+  if (!member) return res.status(403).json({ error: 'Access denied' });
+
+  // Get last 5 completed matches in season
+  const matches = db.prepare(`
+    SELECT id, team_a, team_b, start_time
+    FROM matches
+    WHERE season_id = ? AND status = 'completed'
+    ORDER BY start_time DESC
+    LIMIT 5
+  `).all(seasonId);
+
+  const matchIds = matches.map(m => m.id);
+  if (matchIds.length === 0) return res.json({ form: [] });
+
+  // Get all user teams for these matches
+  const rows = db.prepare(`
+    SELECT ut.user_id, ut.match_id, ut.match_rank, ut.total_fantasy_points
+    FROM user_teams ut
+    WHERE ut.match_id IN (${matchIds.map(() => '?').join(',')})
+  `).all(...matchIds);
+
+  // Group by user
+  const byUser = {};
+  for (const r of rows) {
+    if (!byUser[r.user_id]) byUser[r.user_id] = {};
+    byUser[r.user_id][r.match_id] = { rank: r.match_rank, pts: r.total_fantasy_points };
+  }
+
+  // Build form array per user (last 5, newest first)
+  const form = Object.entries(byUser).map(([userId, matchData]) => ({
+    user_id: parseInt(userId),
+    last5: matchIds.map(mid => matchData[mid]
+      ? { match_id: mid, rank: matchData[mid].rank, pts: matchData[mid].pts }
+      : null
+    ),
+  }));
+
+  return res.json({ form, matches: matches.map(m => ({ id: m.id, team_a: m.team_a, team_b: m.team_b })) });
+});
+
+// ── GET /api/matches/:id/venue-history ───────────────────────────────────────
+// Returns last 5 completed matches at the same venue this season
 
 module.exports = router;
