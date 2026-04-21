@@ -183,12 +183,12 @@ function startCronJobs(io) {
     }
   });
 
-  // ── 3. Playing XI poller — every 5 minutes ─────────────────────────────────
-  // Polls lineup for matches starting within 2 hours
-  cron.schedule('*/5 * * * *', async () => {
+  // ── 3. Playing XI poller — every 2 minutes ─────────────────────────────────
+  // Polls lineup for matches starting within 1 hour
+  cron.schedule('*/2 * * * *', async () => {
     const db = getDb();
-    const now      = new Date();
-    const twoHours = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    const now     = new Date();
+    const oneHour = new Date(now.getTime() + 1 * 60 * 60 * 1000);
 
     const upcoming = db.prepare(`
       SELECT id, sportmonks_fixture_id, team_a, team_b
@@ -196,7 +196,7 @@ function startCronJobs(io) {
       WHERE status = 'upcoming'
       AND sportmonks_fixture_id IS NOT NULL
       AND start_time <= ?
-    `).all(twoHours.toISOString());
+    `).all(oneHour.toISOString());
 
     for (const match of upcoming) {
       try {
