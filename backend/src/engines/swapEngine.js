@@ -38,48 +38,56 @@ function resolveTeam(userTeam, playingXiIds) {
   let   finalCaptainId     = captainId;
   let   finalViceCaptainId = viceCaptainId;
   const swapLog            = [];
-  let   backupIndex        = 0;
+  const usedBackupIds      = new Set();
 
   for (let i = 0; i < finalTeam.length; i++) {
     const player = finalTeam[i];
     if (xiSet.has(player.id)) continue;
 
-    // Player not in XI
-    if (backupIndex >= backups.length) {
-      swapLog.push({ type: 'no_backup_available', slotIndex: i, player });
-      continue;
-    }
+    // Player not in XI — try backups in order, skipping ones already used
+    let swapped = false;
+    for (let b = 0; b < backups.length; b++) {
+      const backup = backups[b];
+      if (usedBackupIds.has(backup.id)) continue;
+      if (backup.id === -1) continue;
 
-    const backup = backups[backupIndex];
-    backupIndex++;
+      if (!xiSet.has(backup.id)) {
+        // Backup also not in XI — try next backup
+        swapLog.push({
+          type: 'backup_not_in_xi',
+          slotIndex: i,
+          originalPlayer: player,
+          backup,
+          result: 'trying_next_backup',
+        });
+        continue;
+      }
 
-    if (!xiSet.has(backup.id)) {
+      // Found a valid backup
+      const inheritedRole =
+        player.id === captainId     ? 'captain'      :
+        player.id === viceCaptainId ? 'vice_captain'  :
+        null;
+
+      finalTeam[i] = backup;
+      if (inheritedRole === 'captain')      finalCaptainId     = backup.id;
+      if (inheritedRole === 'vice_captain') finalViceCaptainId = backup.id;
+      usedBackupIds.add(backup.id);
+
       swapLog.push({
-        type: 'backup_not_in_xi',
+        type: 'swapped',
         slotIndex: i,
-        originalPlayer: player,
-        backup,
-        result: 'slot_scores_zero',
+        swappedOut: player,
+        swappedIn:  backup,
+        inheritedRole,
       });
-      continue;
+      swapped = true;
+      break;
     }
 
-    const inheritedRole =
-      player.id === captainId     ? 'captain'      :
-      player.id === viceCaptainId ? 'vice_captain'  :
-      null;
-
-    finalTeam[i] = backup;
-    if (inheritedRole === 'captain')      finalCaptainId     = backup.id;
-    if (inheritedRole === 'vice_captain') finalViceCaptainId = backup.id;
-
-    swapLog.push({
-      type: 'swapped',
-      slotIndex: i,
-      swappedOut: player,
-      swappedIn:  backup,
-      inheritedRole,
-    });
+    if (!swapped) {
+      swapLog.push({ type: 'no_backup_available', slotIndex: i, player });
+    }
   }
 
   return { finalTeam, captainId: finalCaptainId, viceCaptainId: finalViceCaptainId, swapLog };
@@ -90,7 +98,7 @@ function processAutoSwaps(matchId) {
   const db = getDb();
 
   const xiPlayers = db.prepare(
-    'SELECT player_id FROM match_squads WHERE match_id = ? AND is_playing_xi = 1'
+    'SELECT ms.player_id FROM match_squads ms WHERE ms.match_id = ? AND ms.is_playing_xi = 1'
   ).all(matchId);
   const playingXiIds = new Set(xiPlayers.map(r => r.player_id));
 
@@ -122,8 +130,6 @@ function processAutoSwaps(matchId) {
     VALUES (?, ?, ?, ?)
   `);
 
-  const swapResults = []; // { userId, teamId, swaps: [{out, in}], noSwapNeeded: bool }
-
   const processAll = db.transaction(() => {
     for (const team of userTeams) {
       const allPlayers  = getTeamPlayers.all(team.id);
@@ -140,27 +146,18 @@ function processAutoSwaps(matchId) {
 
       updateResolved.run(resolved.captainId, resolved.viceCaptainId, team.id);
 
-      const teamSwaps = [];
       for (const swap of resolved.swapLog) {
         if (swap.type === 'swapped') {
           try {
             insertSwapLog.run(team.id, swap.swappedOut.id, swap.swappedIn.id, swap.inheritedRole);
-            teamSwaps.push({ out: swap.swappedOut.name, in: swap.swappedIn.name });
           } catch {}
         }
       }
-
-      swapResults.push({
-        userId: team.user_id,
-        teamId: team.id,
-        swaps: teamSwaps,
-        noSwapNeeded: resolved.swapLog.length === 0,
-      });
     }
   });
 
   processAll();
-  return { teamsProcessed: userTeams.length, swapResults };
+  return userTeams.length;
 }
 
 module.exports = { resolveTeam, processAutoSwaps };

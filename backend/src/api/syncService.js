@@ -91,7 +91,8 @@ async function syncPlayingXi(matchId, sportmonksFixtureId) {
   });
   insertXi();
 
-  await processAutoSwaps(matchId);
+  // Note: processAutoSwaps now runs when match goes live (liveDetector)
+  // not during XI sync, to ensure both teams' XIs are confirmed
   recomputeTeamPoints(matchId);
   return { confirmed: true, count: lineup.length };
 }
@@ -236,7 +237,7 @@ function recomputeTeamPoints(matchId) {
   const db = getDb();
 
   const userTeams = db.prepare(`
-    SELECT id, resolved_captain_id, resolved_vice_captain_id, captain_id, vice_captain_id
+    SELECT id, resolved_captain_id, resolved_vice_captain_id, captain_id, vice_captain_id, swap_processed_at
     FROM user_teams WHERE match_id = ?
   `).all(matchId);
 
@@ -251,6 +252,9 @@ function recomputeTeamPoints(matchId) {
   const getSquadEntry = db.prepare(
     'SELECT is_playing_xi FROM match_squads WHERE match_id = ? AND player_id = ?'
   );
+  const getSwapLog = db.prepare(
+    'SELECT swapped_out_player_id, swapped_in_player_id FROM user_team_swaps WHERE user_team_id = ?'
+  );
   const updateTeamPoints = db.prepare(
     'UPDATE user_teams SET total_fantasy_points = ? WHERE id = ?'
   );
@@ -264,22 +268,37 @@ function recomputeTeamPoints(matchId) {
       const backupPlayers = allPlayers.filter(p => p.is_backup)
                                       .sort((a, b) => a.backup_order - b.backup_order);
 
-      const activePlayers = [];
-      const usedBackups   = new Set();
+      // Use swap log if swaps were processed — it's the definitive source of truth
+      const swapLog = getSwapLog.all(team.id);
+      const swappedOutIds = new Set(swapLog.map(s => s.swapped_out_player_id));
+      const swappedInIds  = new Set(swapLog.map(s => s.swapped_in_player_id));
 
-      for (const main of mainPlayers) {
-        const squadEntry = getSquadEntry.get(matchId, main.player_id);
-        const isPlaying  = squadEntry ? squadEntry.is_playing_xi === 1 : true;
-        if (isPlaying) {
-          activePlayers.push(main.player_id);
-        } else {
-          const backup = backupPlayers.find(b =>
-            !usedBackups.has(b.player_id) &&
-            (getSquadEntry.get(matchId, b.player_id)?.is_playing_xi === 1)
-          );
-          if (backup) {
-            activePlayers.push(backup.player_id);
-            usedBackups.add(backup.player_id);
+      let activePlayers;
+
+      if (team.swap_processed_at) {
+        // Trust the swap log: active = mains not swapped out + swapped-in backups
+        activePlayers = [
+          ...mainPlayers.filter(p => !swappedOutIds.has(p.player_id)).map(p => p.player_id),
+          ...backupPlayers.filter(p => swappedInIds.has(p.player_id)).map(p => p.player_id),
+        ];
+      } else {
+        // Swaps not processed yet — use XI status from squad
+        activePlayers = [];
+        const usedBackups = new Set();
+        for (const main of mainPlayers) {
+          const squadEntry = getSquadEntry.get(matchId, main.player_id);
+          const isPlaying  = squadEntry ? squadEntry.is_playing_xi === 1 : true;
+          if (isPlaying) {
+            activePlayers.push(main.player_id);
+          } else {
+            const backup = backupPlayers.find(b =>
+              !usedBackups.has(b.player_id) &&
+              (getSquadEntry.get(matchId, b.player_id)?.is_playing_xi === 1)
+            );
+            if (backup) {
+              activePlayers.push(backup.player_id);
+              usedBackups.add(backup.player_id);
+            }
           }
         }
       }
