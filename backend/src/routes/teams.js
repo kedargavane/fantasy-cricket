@@ -463,7 +463,20 @@ router.post('/match/:matchId', requireAuth, async (req, res) => {
 
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
-  if (match.status !== 'upcoming') return res.status(400).json({ error: 'Team selection is locked' });
+
+  // Allow submissions up to 2 minutes after match goes live (grace period)
+  if (match.status !== 'upcoming') {
+    const referenceTime = match.went_live_at || match.start_time;
+    if (referenceTime) {
+      const ref = new Date(referenceTime.endsWith('Z') ? referenceTime : referenceTime + 'Z');
+      const secondsElapsed = (new Date() - ref) / 1000;
+      if (secondsElapsed > 120) {
+        return res.status(400).json({ error: 'Team selection is locked' });
+      }
+    } else {
+      return res.status(400).json({ error: 'Team selection is locked' });
+    }
+  }
 
   const existing = db.prepare('SELECT id FROM user_teams WHERE user_id=? AND match_id=?').get(userId, matchId);
   if (existing) return res.status(400).json({ error: 'Team already submitted. Use PUT to update.' });
@@ -509,11 +522,17 @@ router.put('/:userTeamId', requireAuth, (req, res) => {
   }
 
   const userTeam = db.prepare(
-    'SELECT ut.*, m.status FROM user_teams ut JOIN matches m ON m.id = ut.match_id WHERE ut.id = ? AND ut.user_id = ?'
+    'SELECT ut.*, m.status, m.start_time, m.went_live_at FROM user_teams ut JOIN matches m ON m.id = ut.match_id WHERE ut.id = ? AND ut.user_id = ?'
   ).get(userTeamId, userId);
 
   if (!userTeam) return res.status(404).json({ error: 'Team not found' });
-  if (userTeam.status !== 'upcoming') return res.status(400).json({ error: 'Match has started — team is locked' });
+  if (userTeam.status !== 'upcoming') {
+    const referenceTime = userTeam.went_live_at || userTeam.start_time;
+    const ref = referenceTime ? new Date(referenceTime.endsWith('Z') ? referenceTime : referenceTime + 'Z') : null;
+    if (!ref || (new Date() - ref) / 1000 > 120) {
+      return res.status(400).json({ error: 'Match has started — team is locked' });
+    }
+  }
 
   const update = db.transaction(() => {
     // Delete existing players
