@@ -134,14 +134,24 @@ router.get('/:userTeamId', requireAuth, (req, res) => {
   const userTeamId = parseInt(req.params.userTeamId, 10);
 
   const userTeam = db.prepare(
-    'SELECT ut.*, m.season_id, m.status as match_status FROM user_teams ut JOIN matches m ON m.id = ut.match_id WHERE ut.id = ?'
+    'SELECT ut.*, m.season_id, m.status as match_status, m.start_time, m.went_live_at FROM user_teams ut JOIN matches m ON m.id = ut.match_id WHERE ut.id = ?'
   ).get(userTeamId);
 
   if (!userTeam) return res.status(404).json({ error: 'Team not found' });
 
-  // Only reveal other users' teams after match has locked
-  if (userTeam.user_id !== req.user.id && userTeam.match_status === 'upcoming') {
-    return res.status(403).json({ error: 'Teams are hidden until match starts' });
+  // Only reveal other users' teams after match has locked + grace period passed
+  if (userTeam.user_id !== req.user.id) {
+    if (userTeam.match_status === 'upcoming') {
+      return res.status(403).json({ error: 'Teams are hidden until match starts' });
+    }
+    // Also hide during 2 min grace period after match goes live
+    const referenceTime = userTeam.went_live_at || userTeam.start_time;
+    if (referenceTime) {
+      const ref = new Date(referenceTime.endsWith('Z') ? referenceTime : referenceTime + 'Z');
+      if ((new Date() - ref) / 1000 < 120) {
+        return res.status(403).json({ error: 'Teams are hidden until match starts' });
+      }
+    }
   }
 
   // Check viewer is in same season
