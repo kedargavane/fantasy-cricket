@@ -265,12 +265,7 @@ export default function TeamPickerPage() {
       }
       navigate(`/match/${matchId}/live`);
     } catch (err) {
-      const errData = err.response?.data;
-      const msg = errData?.error || 'Failed to save team';
-      const detail = errData?.detail ? ` (${errData.detail})` : '';
-      const code = errData?.code ? ` [${errData.code}]` : '';
-      console.error('[TeamPicker] Save failed:', errData);
-      setError(`${msg}${detail}${code}`);
+      setError(err.response?.data?.error || 'Failed to save team');
     } finally {
       setSaving(false);
     }

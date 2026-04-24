@@ -7,16 +7,6 @@ const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Grace period check — allows submission up to 2 min after match goes live
-function isMatchLocked(match) {
-  if (match.status === 'upcoming') return false;
-  const referenceTime = match.went_live_at || match.start_time;
-  if (!referenceTime) return true;
-  const ref = new Date(referenceTime.endsWith('Z') ? referenceTime : referenceTime + 'Z');
-  return (new Date() - ref) / 1000 > 120;
-}
-
-
 // ── POST /api/teams ───────────────────────────────────────────────────────────
 // Submit a team for a match
 router.post('/', requireAuth, (req, res) => {
@@ -29,9 +19,9 @@ router.post('/', requireAuth, (req, res) => {
   const db = getDb();
 
   // ── Check match exists and is not locked ──
-  const match = db.prepare("SELECT *, went_live_at, start_time FROM matches WHERE id = ?").get(matchId);
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
-  if (isMatchLocked(match)) {
+  if (match.status !== 'upcoming') {
     return res.status(400).json({ error: 'Team submission is closed — match has started' });
   }
 
@@ -144,24 +134,14 @@ router.get('/:userTeamId', requireAuth, (req, res) => {
   const userTeamId = parseInt(req.params.userTeamId, 10);
 
   const userTeam = db.prepare(
-    'SELECT ut.*, m.season_id, m.status as match_status, m.start_time, m.went_live_at FROM user_teams ut JOIN matches m ON m.id = ut.match_id WHERE ut.id = ?'
+    'SELECT ut.*, m.season_id, m.status as match_status FROM user_teams ut JOIN matches m ON m.id = ut.match_id WHERE ut.id = ?'
   ).get(userTeamId);
 
   if (!userTeam) return res.status(404).json({ error: 'Team not found' });
 
-  // Only reveal other users' teams after match has locked + grace period passed
-  if (userTeam.user_id !== req.user.id) {
-    if (userTeam.match_status === 'upcoming') {
-      return res.status(403).json({ error: 'Teams are hidden until match starts' });
-    }
-    // Also hide during 2 min grace period after match goes live
-    const referenceTime = userTeam.went_live_at || userTeam.start_time;
-    if (referenceTime) {
-      const ref = new Date(referenceTime.endsWith('Z') ? referenceTime : referenceTime + 'Z');
-      if ((new Date() - ref) / 1000 < 120) {
-        return res.status(403).json({ error: 'Teams are hidden until match starts' });
-      }
-    }
+  // Only reveal other users' teams after match has locked
+  if (userTeam.user_id !== req.user.id && userTeam.match_status === 'upcoming') {
+    return res.status(403).json({ error: 'Teams are hidden until match starts' });
   }
 
   // Check viewer is in same season
@@ -183,7 +163,7 @@ router.put('/match/:matchId', requireAuth, (req, res) => {
 
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
-  if (isMatchLocked(match)) {
+  if (match.status !== 'upcoming') {
     return res.status(400).json({ error: 'Cannot edit team — match has started' });
   }
 
@@ -468,32 +448,25 @@ router.post('/match/:matchId', requireAuth, async (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.matchId, 10);
   const userId  = req.user.id;
-  const { playerIds, captainId, viceCaptainId } = req.body;
-  const backupIds = Array.isArray(req.body.backupIds) ? req.body.backupIds : [];
+  const { playerIds, backupIds, captainId, viceCaptainId } = req.body;
 
   if (!Array.isArray(playerIds) || playerIds.length !== 11) {
-    console.warn(`[teams] Validation failed — match ${matchId} user ${userId}: got ${playerIds?.length} players`);
-    return res.status(400).json({ error: `11 players required — got ${playerIds?.length || 0}`, code: 'INVALID_PLAYERS' });
+    return res.status(400).json({ error: '11 playerIds required' });
   }
+  if (!Array.isArray(backupIds)) backupIds = [];
   if (backupIds.length > 2) {
-    return res.status(400).json({ error: 'Maximum 2 backups allowed', code: 'TOO_MANY_BACKUPS' });
+    return res.status(400).json({ error: 'Maximum 2 backups allowed' });
   }
   if (!captainId || !viceCaptainId) {
-    return res.status(400).json({ error: 'Captain and Vice Captain required', code: 'MISSING_CAPTAIN' });
+    return res.status(400).json({ error: 'captainId and viceCaptainId required' });
   }
 
-  const match = db.prepare("SELECT *, went_live_at, start_time FROM matches WHERE id = ?").get(matchId);
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
-
-  if (isMatchLocked(match)) {
-    const ref = match.went_live_at || match.start_time;
-    const elapsed = ref ? Math.round((new Date() - new Date(ref.endsWith('Z') ? ref : ref + 'Z')) / 1000) : '?';
-    console.warn(`[teams] Locked submission attempt — match ${matchId} user ${userId} — ${elapsed}s after start`);
-    return res.status(400).json({ error: 'Team selection is locked — match has already started', code: 'MATCH_LOCKED', elapsed_seconds: elapsed });
-  }
+  if (match.status !== 'upcoming') return res.status(400).json({ error: 'Team selection is locked' });
 
   const existing = db.prepare('SELECT id FROM user_teams WHERE user_id=? AND match_id=?').get(userId, matchId);
-  if (existing) return res.status(400).json({ error: 'Team already submitted — use the edit button to update', code: 'ALREADY_EXISTS' });
+  if (existing) return res.status(400).json({ error: 'Team already submitted. Use PUT to update.' });
 
   const saveTeam = db.transaction(() => {
     const result = db.prepare(`
@@ -512,8 +485,7 @@ router.post('/match/:matchId', requireAuth, async (req, res) => {
     const utId = saveTeam();
     return res.status(201).json({ message: 'Team submitted', userTeamId: utId });
   } catch (err) {
-    console.error(`[teams] POST /match/${matchId} failed for user ${userId}:`, err.message, err.stack);
-    return res.status(500).json({ error: 'Failed to save team', detail: err.message, code: 'SAVE_FAILED' });
+    return res.status(500).json({ error: err.message });
   }
 });
 
@@ -523,12 +495,12 @@ router.put('/:userTeamId', requireAuth, (req, res) => {
   const db         = getDb();
   const userTeamId = parseInt(req.params.userTeamId, 10);
   const userId     = req.user.id;
-  const { playerIds, captainId, viceCaptainId } = req.body;
-  const backupIds = Array.isArray(req.body.backupIds) ? req.body.backupIds : [];
+  const { playerIds, backupIds, captainId, viceCaptainId } = req.body;
 
   if (!Array.isArray(playerIds) || playerIds.length !== 11) {
     return res.status(400).json({ error: '11 playerIds required' });
   }
+  if (!Array.isArray(backupIds)) backupIds = [];
   if (backupIds.length > 2) {
     return res.status(400).json({ error: 'Maximum 2 backups allowed' });
   }
@@ -537,16 +509,11 @@ router.put('/:userTeamId', requireAuth, (req, res) => {
   }
 
   const userTeam = db.prepare(
-    'SELECT ut.*, m.status, m.start_time, m.went_live_at FROM user_teams ut JOIN matches m ON m.id = ut.match_id WHERE ut.id = ? AND ut.user_id = ?'
+    'SELECT ut.*, m.status FROM user_teams ut JOIN matches m ON m.id = ut.match_id WHERE ut.id = ? AND ut.user_id = ?'
   ).get(userTeamId, userId);
 
   if (!userTeam) return res.status(404).json({ error: 'Team not found' });
-  if (isMatchLocked({ status: userTeam.status, went_live_at: userTeam.went_live_at, start_time: userTeam.start_time })) {
-    const ref = userTeam.went_live_at || userTeam.start_time;
-    const elapsed = ref ? Math.round((new Date() - new Date(ref.endsWith('Z') ? ref : ref + 'Z')) / 1000) : '?';
-    console.warn(`[teams] Locked edit attempt — team ${userTeamId} user ${userId} — ${elapsed}s after start`);
-    return res.status(400).json({ error: 'Match has started — team is locked', code: 'MATCH_LOCKED', elapsed_seconds: elapsed });
-  }
+  if (userTeam.status !== 'upcoming') return res.status(400).json({ error: 'Match has started — team is locked' });
 
   const update = db.transaction(() => {
     // Delete existing players
