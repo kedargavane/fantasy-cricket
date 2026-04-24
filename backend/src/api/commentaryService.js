@@ -140,10 +140,11 @@ Respond ONLY with valid JSON, no markdown backticks:
   });
 
   const data = await response.json();
-  if (data.error) throw new Error(data.error.message);
+  if (data.error) throw new Error(`API error: ${JSON.stringify(data.error)}`);
 
   const text = data.content?.[0]?.text || '';
-  const parsed = JSON.parse(text.trim());
+  const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const parsed = JSON.parse(clean);
 
   // Store in DB
   db.prepare(`
