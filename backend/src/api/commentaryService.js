@@ -53,27 +53,71 @@ async function generateCommentary(matchId, stage, overs) {
     LIMIT 8
   `).all(matchId);
 
-  const prompt = `You are writing punchy, funny fantasy cricket banter for a private league of friends called "Gyarah Sapne".
+  // Captain ownership — who picked whom as captain
+  const captainCounts = {};
+  for (const e of leaderboard) {
+    if (e.captain_name) {
+      captainCounts[e.captain_name] = (captainCounts[e.captain_name] || []);
+      captainCounts[e.captain_name].push(e.name);
+    }
+  }
+  const captainSummary = Object.entries(captainCounts)
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([cap, teams]) => `${cap} (${teams.length} teams: ${teams.join(', ')})`)
+    .join('\n');
+
+  // Points gap between 1st and last
+  const ptsGap = leaderboard.length > 1
+    ? leaderboard[0].total_fantasy_points - leaderboard[leaderboard.length - 1].total_fantasy_points
+    : 0;
+
+  const prompt = `You are the designated WhatsApp group menace for a private fantasy cricket league called "Gyarah Sapne". Your commentary is read by everyone in the group during the match.
+
+Your personality: equal parts Harsha Bhogle, r/cricket shitposter, and that one friend who always says "I told you so". You reference cricket memes, IPL drama, and corporate jargon ironically. You are never neutral.
+
+CRITICAL RULES — FACTS ONLY:
+- ONLY mention players, teams and scores that appear in the data below
+- NEVER invent scores, player performances or outcomes not in the data
+- NEVER assume how many teams are playing — use exactly what's in the leaderboard
+- NEVER predict what will happen — only comment on what HAS happened
+- If match hasn't started, only comment on team compositions and captain choices visible in the data
+- If a stat isn't in the data, don't mention it
+
 Match: ${match.team_a} vs ${match.team_b}
 Stage: ${STAGE_LABELS[stage] || stage} (${overs} overs)
 
-Current leaderboard:
+Leaderboard (${leaderboard.length} teams):
 ${leaderboard.map((e, i) => `#${i+1} ${e.name} — ${e.total_fantasy_points}pts | C:${e.captain_name} VC:${e.vc_name} | units:${e.units_won || 0}`).join('\n')}
 
-Top fantasy scorers so far:
-${topScorers.length > 0 ? topScorers.map(p => `${p.name}: ${p.fantasy_points}pts (${p.runs}r ${p.wickets}w ${p.catches}ct)`).join('\n') : 'Match not started yet'}
+Captain ownership:
+${captainSummary || 'No captains assigned yet'}
 
-Write banter commentary for this stage. Be specific, funny, call out bold/bad captain choices, mention players and team names. Keep it like a WhatsApp message from a knowledgeable friend, not a formal report. If match hasn't started yet, focus on team compositions and captain choices.
+Points gap (1st to last): ${ptsGap} pts
+
+Top fantasy scorers so far:
+${topScorers.length > 0 ? topScorers.map(p => `${p.name}: ${p.fantasy_points}pts (${p.runs}r ${p.wickets}w ${p.catches}ct)`).join('\n') : 'No scores yet — match not started'}
+
+STYLE RULES:
+- Headline feels like a viral meme caption or breaking news chyron. Max 10 words.
+- Body is 2-3 sentences. Mix cricket insight with humour. Use only facts from the data above.
+- Use corporate jargon ironically — "synergies", "pivot", "leverage", "circle back"
+- Use cricket slang naturally — golden duck, corridor of uncertainty, hit the deck etc
+- Mock herd mentality when multiple teams share the same captain
+- Hype contrarian picks that are paying off
+- Roast bad captain choices with no mercy — but only if data shows they flopped
+- Reference memes when relevant — "main character energy", "not the hero we deserved" etc
+- At least one bullet must roast or hype a specific team by name
+- Never say "remains to be seen" or "time will tell"
 
 Respond ONLY with valid JSON, no markdown backticks:
 {
-  "headline": "One punchy sentence, max 10 words, can be funny or sarcastic",
-  "body": "2-3 sentences calling out specific teams and players",
+  "headline": "meme-worthy caption, max 10 words",
+  "body": "2-3 sentences, facts only, with personality",
   "bullets": [
-    {"icon": "emoji", "text": "specific observation about a team or player"},
-    {"icon": "emoji", "text": "specific observation"},
-    {"icon": "emoji", "text": "specific observation"},
-    {"icon": "emoji", "text": "specific observation"}
+    {"icon": "emoji", "text": "specific fact-based roast or hype"},
+    {"icon": "emoji", "text": "specific observation with personality"},
+    {"icon": "emoji", "text": "corporate jargon or meme reference tied to real data"},
+    {"icon": "emoji", "text": "cricket insight with attitude"}
   ]
 }`;
 
@@ -89,7 +133,7 @@ Respond ONLY with valid JSON, no markdown backticks:
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5-20251001',
       max_tokens: 600,
       messages: [{ role: 'user', content: prompt }],
     }),
