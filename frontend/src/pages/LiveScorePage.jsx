@@ -30,6 +30,7 @@ export default function LiveScorePage() {
   const [compareA, setCompareA] = useState(0);
   const [compareB, setCompareB] = useState(0);
   const [inlineCompare, setInlineCompare] = useState(null);
+  const [commentary, setCommentary]       = useState([]);
   const [loadingCompare, setLoadingCompare] = useState(false);
   const [compareAutoLoaded, setCompareAutoLoaded] = useState(false);
   const TABS = match?.status === 'completed'
@@ -57,6 +58,13 @@ export default function LiveScorePage() {
       });
     } catch {}
     finally { setLoadingTeam(false); }
+  }
+
+  async function loadCommentary() {
+    try {
+      const res = await api.get(`/matches/${matchId}/commentary`);
+      setCommentary(res.data.commentary || []);
+    } catch {}
   }
 
   async function loadData() {
@@ -371,6 +379,59 @@ export default function LiveScorePage() {
           {snapshots.length > 0 && (
             <Foldable title="Points during match" defaultOpen={false}>
               <PointsChart series={snapshots} />
+            </Foldable>
+          )}
+
+          {/* Live Commentary */}
+          {commentary.length > 0 && (
+            <Foldable title={`Live Commentary · ${commentary.length} update${commentary.length > 1 ? 's' : ''}`} defaultOpen={true}>
+              <div style={{display:'flex',flexDirection:'column',gap:10,paddingBottom:4}}>
+                {commentary.map((c, idx) => {
+                  const stageColors = {
+                    locked:'#6b3fd4', pp1:'#c08000', inn1:'#1a6fd4',
+                    pp2:'#1a8a4a', final:'#d42020'
+                  };
+                  const stageIcons = {
+                    locked:'🔒', pp1:'🏃', inn1:'📊', pp2:'⚡', final:'🏆'
+                  };
+                  const stageLabels = {
+                    locked:'Teams Locked', pp1:'After 10 Overs',
+                    inn1:'After 1st Innings', pp2:'Chase — 10 Overs', final:'Full Time'
+                  };
+                  const color = stageColors[c.stage] || 'var(--accent-primary)';
+                  return (
+                    <div key={c.stage} style={{
+                      borderLeft:`3px solid ${color}`,
+                      paddingLeft:10,
+                      paddingBottom: idx < commentary.length - 1 ? 10 : 0,
+                      borderBottom: idx < commentary.length - 1 ? '0.5px solid var(--border)' : 'none',
+                    }}>
+                      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:5}}>
+                        <span style={{
+                          background:color,color:'#fff',fontSize:8,fontWeight:700,
+                          padding:'2px 7px',borderRadius:20,letterSpacing:'0.06em',
+                        }}>
+                          {stageIcons[c.stage]} {(stageLabels[c.stage]||c.stage).toUpperCase()} · {c.overs} OV
+                        </span>
+                      </div>
+                      <div style={{fontSize:13,fontWeight:700,color:'var(--text-primary)',fontStyle:'italic',marginBottom:5,lineHeight:1.3}}>
+                        "{c.headline}"
+                      </div>
+                      <div style={{fontSize:11,color:'var(--text-secondary)',lineHeight:1.6,marginBottom:8}}>
+                        {c.body}
+                      </div>
+                      <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                        {c.bullets.map((b, i) => (
+                          <div key={i} style={{display:'flex',gap:6,alignItems:'flex-start'}}>
+                            <span style={{fontSize:12,flexShrink:0}}>{b.icon}</span>
+                            <span style={{fontSize:11,color:'var(--text-primary)',lineHeight:1.4}}>{b.text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </Foldable>
           )}
 

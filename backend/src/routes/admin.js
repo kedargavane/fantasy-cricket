@@ -367,131 +367,6 @@ router.post('/matches/:id/cleanup-squad', (req, res) => {
   return res.json({ message: `Merged ${merged} duplicate players`, merged });
 });
 
-// ── POST /api/admin/matches/:id/reprocess-swaps ─────────────────────────────
-// Force re-process swaps for a match — resets swap_processed_at and re-runs
-router.post('/matches/:id/reprocess-swaps', async (req, res) => {
-  const db = getDb();
-  const matchId = parseInt(req.params.id, 10);
-  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
-  if (!match) return res.status(404).json({ error: 'Match not found' });
-
-  try {
-    // Reset swap_processed_at so processAutoSwaps will re-run
-    db.prepare('UPDATE user_teams SET swap_processed_at = NULL WHERE match_id = ?').run(matchId);
-    // Clear existing swap records for this match
-    db.prepare(`
-      DELETE FROM user_team_swaps WHERE user_team_id IN
-      (SELECT id FROM user_teams WHERE match_id = ?)
-    `).run(matchId);
-
-    // Re-run swaps
-    const { processAutoSwaps } = require('../engines/swapEngine');
-    const { teamsProcessed } = processAutoSwaps(matchId);
-
-    // Recompute team points
-    const { recomputeTeamPoints } = require('../api/syncService');
-    recomputeTeamPoints(matchId);
-
-    return res.json({ ok: true, teamsProcessed });
-  } catch(e) {
-    return res.status(500).json({ error: e.message });
-  }
-});
-
-// ── POST /api/admin/seasons/:seasonId/rebuild-standings ─────────────────────
-// Wipes and rebuilds season leaderboard from prize_distributions (deduped)
-router.post('/seasons/:seasonId/rebuild-standings', requireAuth, (req, res) => {
-  const db = getDb();
-  const seasonId = parseInt(req.params.seasonId, 10);
-
-  try {
-    // For each completed match, keep only the latest prize distribution set
-    const matches = db.prepare(
-      "SELECT id FROM matches WHERE season_id = ? AND status = 'completed'"
-    ).all(seasonId);
-
-    const dedup = db.transaction(() => {
-      for (const match of matches) {
-        // Get the prize pool for this match
-        const pool = db.prepare(
-          'SELECT id FROM match_prize_pools WHERE match_id = ?'
-        ).get(match.id);
-        if (!pool) continue;
-
-        // Keep only one set of distributions per user_team (delete dupes)
-        const teams = db.prepare(
-          'SELECT DISTINCT user_team_id FROM prize_distributions WHERE match_prize_pool_id = ?'
-        ).all(pool.id);
-
-        for (const t of teams) {
-          // Keep the latest row, delete the rest
-          const rows = db.prepare(
-            'SELECT id FROM prize_distributions WHERE match_prize_pool_id = ? AND user_team_id = ? ORDER BY id DESC'
-          ).all(pool.id, t.user_team_id);
-          // Delete all except the first (latest)
-          for (let i = 1; i < rows.length; i++) {
-            db.prepare('DELETE FROM prize_distributions WHERE id = ?').run(rows[i].id);
-          }
-        }
-      }
-    });
-    dedup();
-
-    // Now rebuild season leaderboard from clean prize_distributions
-    const seasonMatchIds = matches.map(m => m.id);
-    if (seasonMatchIds.length === 0) return res.json({ ok: true, message: 'No completed matches' });
-
-    // Use MAX(id) per user_team to get only the latest distribution row
-    const allPrizes = db.prepare(`
-      SELECT pd.fantasy_points, pd.gross_units, pd.net_units, ut.user_id, ut.match_id
-      FROM prize_distributions pd
-      JOIN user_teams ut ON ut.id = pd.user_team_id
-      WHERE ut.match_id IN (${seasonMatchIds.map(() => '?').join(',')})
-      AND pd.id IN (
-        SELECT MAX(id) FROM prize_distributions
-        WHERE user_team_id IN (SELECT id FROM user_teams WHERE match_id IN (${seasonMatchIds.map(() => '?').join(',')}))
-        GROUP BY user_team_id
-      )
-    `).all(...seasonMatchIds, ...seasonMatchIds);
-
-    const userStats = {};
-    for (const p of allPrizes) {
-      if (!userStats[p.user_id]) {
-        userStats[p.user_id] = { pts: 0, won: 0, net: 0, played: 0, top: 0 };
-      }
-      userStats[p.user_id].pts    += p.fantasy_points || 0;
-      userStats[p.user_id].won    += p.gross_units || 0;
-      userStats[p.user_id].net    += p.net_units || 0;
-      userStats[p.user_id].played += 1;
-      userStats[p.user_id].top    += p.gross_units > 0 ? 1 : 0;
-    }
-
-    const upsert = db.prepare(`
-      INSERT INTO season_leaderboard
-        (season_id, user_id, total_fantasy_points, total_units_won, net_units, matches_played, top_finishes, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-      ON CONFLICT(season_id, user_id) DO UPDATE SET
-        total_fantasy_points = excluded.total_fantasy_points,
-        total_units_won      = excluded.total_units_won,
-        net_units            = excluded.net_units,
-        matches_played       = excluded.matches_played,
-        top_finishes         = excluded.top_finishes,
-        updated_at           = datetime('now')
-    `);
-
-    const rebuild = db.transaction(() => {
-      for (const [userId, s] of Object.entries(userStats)) {
-        upsert.run(seasonId, parseInt(userId), s.pts, s.won, s.net, s.played, s.top);
-      }
-    });
-    rebuild();
-
-    return res.json({ ok: true, users: Object.keys(userStats).length, matches: seasonMatchIds.length });
-  } catch(e) {
-    return res.status(500).json({ error: e.message });
-  }
-});
-
 // ── POST /api/admin/seasons/:seasonId/sync-venues ───────────────────────────
 // Fetch venue info for all matches in a season
 router.post('/seasons/:seasonId/sync-venues', async (req, res) => {
@@ -882,8 +757,6 @@ function finaliseMatch(db, matchId, seasonId) {
   `);
 
   const doFinalise = db.transaction(() => {
-    // Clear existing distributions (re-finalise safe)
-    db.prepare('DELETE FROM prize_distributions WHERE match_prize_pool_id = ?').run(poolId);
     for (const prize of prizes) {
       insertPrize.run(poolId, prize.userId, prize.rank, prize.grossUnits, prize.netUnits, prize.fantasyPoints);
       updateTeam.run(prize.rank, prize.grossUnits, prize.userId);
@@ -893,84 +766,52 @@ function finaliseMatch(db, matchId, seasonId) {
     db.prepare("UPDATE matches SET status = 'completed' WHERE id = ?").run(matchId);
   });
 
-  db.pragma('foreign_keys = OFF');
-  try { doFinalise(); } finally { db.pragma('foreign_keys = ON'); }
+  doFinalise();
 
   // 8. Update season leaderboard
   updateSeasonLeaderboard(db, matchId, seasonId, prizes, entryUnits);
 
   // 9. Send result push notifications
   sendResultNotifications(db, matchId, prizes).catch(console.error);
+
+  // 10. Generate final commentary
+  const { generateCommentary } = require('../api/commentaryService');
+  generateCommentary(matchId, 'final', '40.0').catch(e =>
+    console.error('[commentary] final stage failed:', e.message)
+  );
 }
 
 function updateSeasonLeaderboard(db, matchId, seasonId, prizes, entryUnits) {
-  // Rebuild entire season leaderboard from scratch to avoid double-counting on re-finalise
-  // Get all finalised matches in this season
-  const seasonMatches = db.prepare(`
-    SELECT id FROM matches WHERE season_id = ? AND status = 'completed'
-  `).all(seasonId).map(m => m.id);
-
-  // Get all prize distributions for all completed matches in season
-  const allPrizes = db.prepare(`
-    SELECT pd.*, ut.user_id, ut.match_id
-    FROM prize_distributions pd
-    JOIN user_teams ut ON ut.id = pd.user_team_id
-    WHERE ut.match_id IN (${seasonMatches.map(() => '?').join(',')})
-  `).all(...seasonMatches);
-
-  // Get entry units per match
-  const entryUnitsMap = {};
-  for (const mid of seasonMatches) {
-    const mc = db.prepare('SELECT entry_units FROM match_config WHERE match_id = ?').get(mid);
-    entryUnitsMap[mid] = mc ? mc.entry_units : 300;
-  }
-
-  // Aggregate per user
-  const userStats = {};
-  for (const p of allPrizes) {
-    if (!userStats[p.user_id]) {
-      userStats[p.user_id] = {
-        total_fantasy_points: 0,
-        total_units_won: 0,
-        net_units: 0,
-        matches_played: 0,
-        top_finishes: 0,
-      };
-    }
-    const eu = entryUnitsMap[p.match_id] || 300;
-    userStats[p.user_id].total_fantasy_points += p.fantasy_points || 0;
-    userStats[p.user_id].total_units_won      += p.gross_units || 0;
-    userStats[p.user_id].net_units            += (p.net_units || 0);
-    userStats[p.user_id].matches_played       += 1;
-    userStats[p.user_id].top_finishes         += p.gross_units > 0 ? 1 : 0;
-  }
-
-  const upsert = db.prepare(`
-    INSERT INTO season_leaderboard
-      (season_id, user_id, total_fantasy_points, total_units_won, net_units, matches_played, top_finishes, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  const updateLeaderboard = db.prepare(`
+    INSERT INTO season_leaderboard (season_id, user_id, total_fantasy_points, total_units_won, net_units, matches_played, top_finishes, updated_at)
+    VALUES (?, ?, ?, ?, ?, 1, ?, datetime('now'))
     ON CONFLICT(season_id, user_id) DO UPDATE SET
-      total_fantasy_points = excluded.total_fantasy_points,
-      total_units_won      = excluded.total_units_won,
-      net_units            = excluded.net_units,
-      matches_played       = excluded.matches_played,
-      top_finishes         = excluded.top_finishes,
+      total_fantasy_points = total_fantasy_points + excluded.total_fantasy_points,
+      total_units_won      = total_units_won + excluded.total_units_won,
+      net_units            = net_units + excluded.net_units,
+      matches_played       = matches_played + 1,
+      top_finishes         = top_finishes + excluded.top_finishes,
       updated_at           = datetime('now')
   `);
 
-  const rebuild = db.transaction(() => {
-    for (const [userId, stats] of Object.entries(userStats)) {
-      upsert.run(
-        seasonId, parseInt(userId),
-        stats.total_fantasy_points,
-        stats.total_units_won,
-        stats.net_units,
-        stats.matches_played,
-        stats.top_finishes
+  const updateAll = db.transaction(() => {
+    for (const prize of prizes) {
+      // Get the user_id from the user_team
+      const userTeam = db.prepare('SELECT user_id FROM user_teams WHERE id = ?').get(prize.userId);
+      if (!userTeam) continue;
+
+      const isTopFinish = prize.grossUnits > 0 ? 1 : 0;
+      updateLeaderboard.run(
+        seasonId, userTeam.user_id,
+        prize.fantasyPoints,
+        prize.grossUnits,
+        prize.netUnits,
+        isTopFinish
       );
     }
   });
-  rebuild();
+
+  updateAll();
 }
 
 async function sendResultNotifications(db, matchId, prizes) {
@@ -1194,7 +1035,7 @@ router.delete('/users/:id', (req, res) => {
 });
 
 // ── POST /api/admin/matches/:id/sync-xi ──────────────────────────────────────
-// Manually trigger Playing XI sync from Sportmonks
+// Manually trigger Playing XI sync from CricAPI
 router.post('/matches/:id/sync-xi', async (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.id, 10);
@@ -1202,14 +1043,9 @@ router.post('/matches/:id/sync-xi', async (req, res) => {
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
 
-  const fixtureId = match.sportmonks_fixture_id ||
-    (match.external_match_id?.startsWith('sm-') ? parseInt(match.external_match_id.replace('sm-', '')) : null);
-
-  if (!fixtureId) return res.status(422).json({ error: 'No Sportmonks fixture ID for this match' });
-
   try {
     const { syncPlayingXi } = require('../api/syncService');
-    const result = await syncPlayingXi(matchId, fixtureId);
+    const result = await syncPlayingXi(matchId, match.external_match_id);
     return res.json(result);
   } catch (err) {
     return res.status(500).json({ error: err.message });

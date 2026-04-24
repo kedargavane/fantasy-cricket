@@ -113,6 +113,29 @@ function startCronJobs(io) {
               timestamp: new Date().toISOString(),
             });
           }
+
+          // Trigger commentary at over milestones (60=10ov, 120=20ov, 180=30ov)
+          const commentaryMilestones = [
+            { balls: 60,  stage: 'pp1',   overs: '10.0' },
+            { balls: 120, stage: 'inn1',   overs: '20.0' },
+            { balls: 180, stage: 'pp2',   overs: '30.0' },
+          ];
+          for (const m of commentaryMilestones) {
+            if (lastBalls < m.balls && currentBalls >= m.balls) {
+              const existing = db.prepare(
+                'SELECT id FROM match_commentary WHERE match_id = ? AND stage = ?'
+              ).get(match.id, m.stage);
+              if (!existing) {
+                try {
+                  const { generateCommentary } = require('../api/commentaryService');
+                  await generateCommentary(match.id, m.stage, m.overs);
+                } catch(e) {
+                  console.error(`[commentary] Failed ${m.stage}:`, e.message);
+                }
+              }
+              break;
+            }
+          }
         }
       } catch (err) {
         console.error(`[livePoller] match ${match.id} error:`, err.message);
@@ -141,7 +164,7 @@ function startCronJobs(io) {
           "SELECT id FROM matches WHERE sportmonks_fixture_id = ? AND status = 'upcoming'"
         ).get(fixtureId);
         if (match) {
-          db.prepare("UPDATE matches SET status = 'live' WHERE id = ?").run(match.id);
+          db.prepare("UPDATE matches SET status = 'live', went_live_at = datetime('now') WHERE id = ?").run(match.id);
           console.log(`[liveDetector] Match ${match.id} (fixture ${fixtureId}) is now live (${fixture.status})`);
           io.to(`match:${match.id}`).emit('matchStarted', { matchId: match.id });
           // Run swaps NOW — both XIs guaranteed at match start
@@ -154,6 +177,27 @@ function startCronJobs(io) {
           } catch(e) {
             console.error(`[liveDetector] Swap error match ${match.id}:`, e.message);
           }
+          // Note: 'locked' commentary fires 2 min after went_live_at (checked below)
+        }
+      }
+
+      // Generate 'locked' commentary 2 min after match went live (grace period over)
+      const recentlyLocked = db.prepare(`
+        SELECT m.id FROM matches m
+        WHERE m.status = 'live'
+          AND m.went_live_at IS NOT NULL
+          AND (strftime('%s','now') - strftime('%s', m.went_live_at)) >= 120
+          AND NOT EXISTS (
+            SELECT 1 FROM match_commentary mc
+            WHERE mc.match_id = m.id AND mc.stage = 'locked'
+          )
+      `).all();
+      for (const m of recentlyLocked) {
+        try {
+          const { generateCommentary } = require('../api/commentaryService');
+          await generateCommentary(m.id, 'locked', '0.0');
+        } catch(e) {
+          console.error(`[commentary] locked stage failed for match ${m.id}:`, e.message);
         }
       }
 

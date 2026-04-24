@@ -345,4 +345,44 @@ router.get('/player/:playerId/season/:seasonId/stats', requireAuth, (req, res) =
   return res.json({ player, totalMatches, totalPts, avgPts, bestPts, last5: matches });
 });
 
+// ── GET /api/matches/:id/commentary ──────────────────────────────────────────
+// Returns all generated commentary stages for a match
+router.get('/:id/commentary', requireAuth, (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.id, 10);
+
+  const match = db.prepare('SELECT season_id FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  const member = db.prepare(
+    'SELECT id FROM season_memberships WHERE season_id = ? AND user_id = ?'
+  ).get(match.season_id, req.user.id);
+  if (!member) return res.status(403).json({ error: 'Access denied' });
+
+  const commentary = db.prepare(
+    'SELECT * FROM match_commentary WHERE match_id = ? ORDER BY id ASC'
+  ).all(matchId);
+
+  return res.json({ commentary: commentary.map(c => ({
+    ...c,
+    bullets: JSON.parse(c.bullets),
+  }))});
+});
+
+// ── POST /api/matches/:id/generate-commentary ─────────────────────────────────
+router.post('/:id/generate-commentary', requireAuth, async (req, res) => {
+  const matchId = parseInt(req.params.id, 10);
+  const { stage, overs } = req.body;
+  if (!stage || !overs) return res.status(400).json({ error: 'stage and overs required' });
+
+  try {
+    const { generateCommentary } = require('../api/commentaryService');
+    const result = await generateCommentary(matchId, stage, overs);
+    return res.json({ ok: true, stage, commentary: result });
+  } catch (e) {
+    console.error('[commentary] error:', e.message);
+    return res.status(500).json({ error: 'Failed to generate commentary', detail: e.message });
+  }
+});
+
 module.exports = router;
