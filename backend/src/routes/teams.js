@@ -468,28 +468,32 @@ router.post('/match/:matchId', requireAuth, async (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.matchId, 10);
   const userId  = req.user.id;
-  const { playerIds, backupIds, captainId, viceCaptainId } = req.body;
+  const { playerIds, captainId, viceCaptainId } = req.body;
+  const backupIds = Array.isArray(req.body.backupIds) ? req.body.backupIds : [];
 
   if (!Array.isArray(playerIds) || playerIds.length !== 11) {
-    return res.status(400).json({ error: '11 playerIds required' });
+    console.warn(`[teams] Validation failed — match ${matchId} user ${userId}: got ${playerIds?.length} players`);
+    return res.status(400).json({ error: `11 players required — got ${playerIds?.length || 0}`, code: 'INVALID_PLAYERS' });
   }
-  if (!Array.isArray(backupIds)) backupIds = [];
   if (backupIds.length > 2) {
-    return res.status(400).json({ error: 'Maximum 2 backups allowed' });
+    return res.status(400).json({ error: 'Maximum 2 backups allowed', code: 'TOO_MANY_BACKUPS' });
   }
   if (!captainId || !viceCaptainId) {
-    return res.status(400).json({ error: 'captainId and viceCaptainId required' });
+    return res.status(400).json({ error: 'Captain and Vice Captain required', code: 'MISSING_CAPTAIN' });
   }
 
   const match = db.prepare("SELECT *, went_live_at, start_time FROM matches WHERE id = ?").get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
 
   if (isMatchLocked(match)) {
-    return res.status(400).json({ error: 'Team selection is locked' });
+    const ref = match.went_live_at || match.start_time;
+    const elapsed = ref ? Math.round((new Date() - new Date(ref.endsWith('Z') ? ref : ref + 'Z')) / 1000) : '?';
+    console.warn(`[teams] Locked submission attempt — match ${matchId} user ${userId} — ${elapsed}s after start`);
+    return res.status(400).json({ error: 'Team selection is locked — match has already started', code: 'MATCH_LOCKED', elapsed_seconds: elapsed });
   }
 
   const existing = db.prepare('SELECT id FROM user_teams WHERE user_id=? AND match_id=?').get(userId, matchId);
-  if (existing) return res.status(400).json({ error: 'Team already submitted. Use PUT to update.' });
+  if (existing) return res.status(400).json({ error: 'Team already submitted — use the edit button to update', code: 'ALREADY_EXISTS' });
 
   const saveTeam = db.transaction(() => {
     const result = db.prepare(`
@@ -508,7 +512,8 @@ router.post('/match/:matchId', requireAuth, async (req, res) => {
     const utId = saveTeam();
     return res.status(201).json({ message: 'Team submitted', userTeamId: utId });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    console.error(`[teams] POST /match/${matchId} failed for user ${userId}:`, err.message, err.stack);
+    return res.status(500).json({ error: 'Failed to save team', detail: err.message, code: 'SAVE_FAILED' });
   }
 });
 
@@ -518,12 +523,12 @@ router.put('/:userTeamId', requireAuth, (req, res) => {
   const db         = getDb();
   const userTeamId = parseInt(req.params.userTeamId, 10);
   const userId     = req.user.id;
-  const { playerIds, backupIds, captainId, viceCaptainId } = req.body;
+  const { playerIds, captainId, viceCaptainId } = req.body;
+  const backupIds = Array.isArray(req.body.backupIds) ? req.body.backupIds : [];
 
   if (!Array.isArray(playerIds) || playerIds.length !== 11) {
     return res.status(400).json({ error: '11 playerIds required' });
   }
-  if (!Array.isArray(backupIds)) backupIds = [];
   if (backupIds.length > 2) {
     return res.status(400).json({ error: 'Maximum 2 backups allowed' });
   }
@@ -537,7 +542,10 @@ router.put('/:userTeamId', requireAuth, (req, res) => {
 
   if (!userTeam) return res.status(404).json({ error: 'Team not found' });
   if (isMatchLocked({ status: userTeam.status, went_live_at: userTeam.went_live_at, start_time: userTeam.start_time })) {
-    return res.status(400).json({ error: 'Match has started — team is locked' });
+    const ref = userTeam.went_live_at || userTeam.start_time;
+    const elapsed = ref ? Math.round((new Date() - new Date(ref.endsWith('Z') ? ref : ref + 'Z')) / 1000) : '?';
+    console.warn(`[teams] Locked edit attempt — team ${userTeamId} user ${userId} — ${elapsed}s after start`);
+    return res.status(400).json({ error: 'Match has started — team is locked', code: 'MATCH_LOCKED', elapsed_seconds: elapsed });
   }
 
   const update = db.transaction(() => {
