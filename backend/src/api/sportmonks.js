@@ -191,64 +191,15 @@ async function fetchFixtureScorecard(fixtureId) {
 
     // Dismissal details for scorecard display
     p.bowlerName   = b.bowling_player_id   ? (lineupNames[b.bowling_player_id]   || null) : null;
+    // For c&b (wicket_id=79), catcher = bowler
     const catcherId = b.catch_stump_player_id || (b.wicket_id === 79 ? b.bowling_player_id : null);
     p.catcherName  = catcherId ? (lineupNames[catcherId] || null) : null;
     p.runoutName   = b.runout_by_id        ? (lineupNames[b.runout_by_id]        || null) : null;
     p.bowlerId     = b.bowling_player_id   || null;
     p.catcherId    = b.catch_stump_player_id || null;
 
-    // Determine if player is actually dismissed
-    // IPL: Sportmonks returns wicket_id:54 for everyone but still populates
-    // catch_stump_player_id, bowling_player_id, runout_by_id for dismissed players
-    // So we use field presence as primary signal, wicket_id as secondary
-    const hasFielder  = !!(b.catch_stump_player_id);
-    const hasBowler   = !!(b.bowling_player_id);
-    const hasRunout   = !!(b.runout_by_id);
-    const wicketId    = b.wicket_id;
-
-    // Stumping: wicket_id 5 or 55
-    const isStumped = wicketId === 5 || wicketId === 55;
-
-    // Run out: wicket_id 4 or 63, OR has runout_by_id
-    // For IPL wicket_id 63 = run out, fielder stored in catch_stump_player_id
-    const isRunOut  = hasRunout || wicketId === 4 || wicketId === 63;
-
-    // Catch: has catcher + bowler, or c&b (79), or caught wicket IDs
-    // But NOT if it's a stumping or run out
-    const isCatch   = !isStumped && !isRunOut && (
-                      (hasFielder && hasBowler) ||
-                      [2, 79, 84].includes(wicketId)
-                    );
-
-    // LBW/bowled: has bowler but NO catcher and NOT runout/stumped
-    const isBowledOrLbw = !isStumped && !isRunOut && !isCatch &&
-                          hasBowler && !hasFielder &&
-                          (wicketId === 1 || wicketId === 3 || wicketId === 83 ||
-                           wicketId === 54);
-
-    if (isCatch && catcherId) {
-      const fielder = ensurePlayer(catcherId, b.team_id === localTeamId ? visitorTeamId : localTeamId);
-      fielder.catches += 1;
-    }
-    if (isStumped && b.catch_stump_player_id) {
-      const wk = ensurePlayer(b.catch_stump_player_id, b.team_id === localTeamId ? visitorTeamId : localTeamId);
-      wk.stumpings += 1;
-    }
-    if (isRunOut) {
-      // Run out fielder: use runout_by_id if available, else catch_stump_player_id
-      const runoutFielderId = b.runout_by_id || (wicketId === 63 ? b.catch_stump_player_id : null);
-      if (runoutFielderId) {
-        const fielder = ensurePlayer(runoutFielderId, b.team_id === localTeamId ? visitorTeamId : localTeamId);
-        fielder.runOuts += 1;
-      }
-    }
-
-    // LBW/bowled bonus to bowler
-    if (isBowledOrLbw && b.bowling_player_id) {
-      const bowlerPid = b.bowling_player_id;
-      ensurePlayer(bowlerPid, b.team_id === localTeamId ? visitorTeamId : localTeamId);
-      statsMap[bowlerPid].bowlerDismissals.push('bowled');
-    } else if ((p.dismissalType === 'lbw' || p.dismissalType === 'bowled') && b.bowling_player_id) {
+    // LBW/bowled bonus
+    if ((p.dismissalType === 'lbw' || p.dismissalType === 'bowled') && b.bowling_player_id) {
       const bowlerPid = b.bowling_player_id;
       ensurePlayer(bowlerPid, b.team_id === localTeamId ? visitorTeamId : localTeamId);
       statsMap[bowlerPid].bowlerDismissals.push(p.dismissalType);
@@ -273,14 +224,7 @@ async function fetchFixtureScorecard(fixtureId) {
     p.maidens       = parseInt(b.maiden || b.medians || 0, 10);
   }
 
-  const playerStats = Object.values(statsMap).map(stat => {
-    // Resolve bowlerDismissalType for LBW/bowled bonus in scoring engine
-    if (stat.bowlerDismissals && stat.bowlerDismissals.length > 0) {
-      stat.bowlerDismissalType = stat.bowlerDismissals[0];
-    }
-    delete stat.bowlerDismissals;
-    return stat;
-  });
+  const playerStats = Object.values(statsMap);
   return { matchInfo, playerStats };
 }
 
@@ -304,16 +248,11 @@ async function fetchSquadByTeamAndSeason(teamId, smSeasonId) {
 async function fetchFixtureLineup(fixtureId) {
   const data = await smGet(`fixtures/${fixtureId}`, { include: 'lineup' });
   const lineup = data.data?.lineup || [];
-
-  // IPL has 16 per side (11 playing XI + 5 impact player substitutes)
-  // substitution: false = playing XI, substitution: true = impact player substitute
-  const hasSubstitutionData = lineup.some(p => p.lineup?.substitution === false);
-
   return lineup.map(p => ({
     externalPlayerId: String(p.id || p.player_id),
     teamId:           p.lineup?.team_id || p.team_id,
-    isSubstitute:     hasSubstitutionData ? (p.lineup?.substitution === true) : false,
-    isPlayingXi:      hasSubstitutionData ? (p.lineup?.substitution === false) : true,
+    isPlayingXi:      true,
+    isSubstitute:     p.lineup?.substitution === true || p.substitution === true ? 1 : 0,
   }));
 }
 

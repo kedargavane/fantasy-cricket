@@ -53,17 +53,17 @@ async function syncPlayingXi(matchId, sportmonksFixtureId) {
     'SELECT id FROM players WHERE external_player_id = ?'
   );
   const updateXi = db.prepare(
-    'UPDATE match_squads SET is_playing_xi = ? WHERE match_id = ? AND player_id = ?'
+    'UPDATE match_squads SET is_playing_xi = ?, is_substitute = ? WHERE match_id = ? AND player_id = ?'
   );
   const resetXi = db.prepare(
-    'UPDATE match_squads SET is_playing_xi = 0 WHERE match_id = ?'
+    'UPDATE match_squads SET is_playing_xi = 0, is_substitute = 0 WHERE match_id = ?'
   );
 
   const doSync = db.transaction(() => {
     resetXi.run(matchId);
     for (const p of lineup) {
       const player = getPlayer.get(String(p.externalPlayerId));
-      if (player) updateXi.run(1, matchId, player.id);
+      if (player) updateXi.run(1, p.isSubstitute || 0, matchId, player.id);
     }
   });
   doSync();
