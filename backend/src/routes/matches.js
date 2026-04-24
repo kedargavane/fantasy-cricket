@@ -345,4 +345,144 @@ router.get('/player/:playerId/season/:seasonId/stats', requireAuth, (req, res) =
   return res.json({ player, totalMatches, totalPts, avgPts, bestPts, last5: matches });
 });
 
+// ── GET /api/matches/:id/commentary ──────────────────────────────────────────
+// Returns all generated commentary stages for a match
+router.get('/:id/commentary', requireAuth, (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.id, 10);
+
+  const match = db.prepare('SELECT season_id FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  const member = db.prepare(
+    'SELECT id FROM season_memberships WHERE season_id = ? AND user_id = ?'
+  ).get(match.season_id, req.user.id);
+  if (!member) return res.status(403).json({ error: 'Access denied' });
+
+  const commentary = db.prepare(
+    'SELECT * FROM match_commentary WHERE match_id = ? ORDER BY id ASC'
+  ).all(matchId);
+
+  return res.json({ commentary: commentary.map(c => ({
+    ...c,
+    bullets: JSON.parse(c.bullets),
+  }))});
+});
+
+// ── POST /api/admin/matches/:id/generate-commentary ──────────────────────────
+// Generates commentary for a given stage using Claude API
+router.post('/:id/generate-commentary', requireAuth, async (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const { stage, overs } = req.body;
+
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  // Get leaderboard data
+  const leaderboard = db.prepare(`
+    SELECT u.name, ut.total_fantasy_points, ut.match_rank,
+      cp.name as captain_name, vcp.name as vc_name,
+      ut.units_won
+    FROM user_teams ut
+    JOIN users u ON u.id = ut.user_id
+    LEFT JOIN players cp  ON cp.id = ut.resolved_captain_id
+    LEFT JOIN players vcp ON vcp.id = ut.resolved_vice_captain_id
+    WHERE ut.match_id = ?
+    ORDER BY ut.total_fantasy_points DESC
+  `).all(matchId);
+
+  // Get top scorers
+  const topScorers = db.prepare(`
+    SELECT p.name, pms.fantasy_points, pms.runs, pms.wickets, pms.catches
+    FROM player_match_stats pms
+    JOIN players p ON p.id = pms.player_id
+    WHERE pms.match_id = ?
+    ORDER BY pms.fantasy_points DESC
+    LIMIT 8
+  `).all(matchId);
+
+  // Get team compositions (who picked whom as captain)
+  const teamPlayers = db.prepare(`
+    SELECT u.name as team_name, p.name as player_name, utp.is_backup,
+      CASE WHEN ut.resolved_captain_id = p.id THEN 'captain'
+           WHEN ut.resolved_vice_captain_id = p.id THEN 'vice_captain'
+           ELSE 'normal' END as role
+    FROM user_teams ut
+    JOIN user_team_players utp ON utp.user_team_id = ut.id
+    JOIN players p ON p.id = utp.player_id
+    JOIN users u ON u.id = ut.user_id
+    WHERE ut.match_id = ?
+  `).all(matchId);
+
+  const stageLabels = {
+    locked: 'Teams just locked — match about to start',
+    pp1: 'After 10 overs of 1st innings',
+    inn1: 'After 1st innings complete',
+    pp2: 'After 10 overs of 2nd innings (chase)',
+    final: 'Match complete — final result',
+  };
+
+  const prompt = `You are writing punchy, funny fantasy cricket banter for a private league of friends called "Gyarah Sapne". 
+Match: ${match.team_a} vs ${match.team_b}
+Stage: ${stageLabels[stage] || stage} (${overs} overs)
+
+Current leaderboard:
+${leaderboard.map((e, i) => `#${i+1} ${e.name} — ${e.total_fantasy_points}pts | C:${e.captain_name} VC:${e.vc_name} | units:${e.units_won}`).join('\n')}
+
+Top fantasy scorers so far:
+${topScorers.map(p => `${p.name}: ${p.fantasy_points}pts (${p.runs}r ${p.wickets}w ${p.catches}ct)`).join('\n')}
+
+Write banter commentary for this stage. Be specific, funny, call out bold/bad captain choices, mention players by name. Keep it like a WhatsApp message from a knowledgeable friend, not a formal sports report.
+
+Respond ONLY with valid JSON in this exact format, no markdown:
+{
+  "headline": "One punchy sentence (max 10 words, can be funny/sarcastic)",
+  "body": "2-3 sentences of commentary calling out specific teams and players",
+  "bullets": [
+    {"icon": "emoji", "text": "specific observation about a team or player"},
+    {"icon": "emoji", "text": "specific observation"},
+    {"icon": "emoji", "text": "specific observation"},
+    {"icon": "emoji", "text": "specific observation"}
+  ]
+}`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '';
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+
+    // Store in DB (upsert)
+    db.prepare(`
+      INSERT INTO match_commentary (match_id, stage, headline, body, bullets, overs)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(match_id, stage) DO UPDATE SET
+        headline = excluded.headline,
+        body = excluded.body,
+        bullets = excluded.bullets,
+        overs = excluded.overs,
+        generated_at = datetime('now')
+    `).run(matchId, stage, parsed.headline, parsed.body, JSON.stringify(parsed.bullets), overs);
+
+    return res.json({ ok: true, stage, commentary: parsed });
+  } catch (e) {
+    console.error('[commentary] error:', e.message);
+    return res.status(500).json({ error: 'Failed to generate commentary', detail: e.message });
+  }
+});
+
 module.exports = router;
