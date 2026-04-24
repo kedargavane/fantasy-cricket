@@ -16,13 +16,13 @@ async function generateCommentary(matchId, stage, overs) {
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) throw new Error(`Match ${matchId} not found`);
 
-  // Check if already generated
+  // Check if already generated — return existing
   const existing = db.prepare(
-    'SELECT id FROM match_commentary WHERE match_id = ? AND stage = ?'
+    'SELECT * FROM match_commentary WHERE match_id = ? AND stage = ?'
   ).get(matchId, stage);
   if (existing) {
-    console.log(`[commentary] Stage ${stage} already exists for match ${matchId} — skipping`);
-    return null;
+    console.log(`[commentary] Stage ${stage} already exists for match ${matchId} — returning existing`);
+    return { ...existing, bullets: JSON.parse(existing.bullets) };
   }
 
   // Get leaderboard data
