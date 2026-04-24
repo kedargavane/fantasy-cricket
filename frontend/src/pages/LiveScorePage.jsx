@@ -41,6 +41,7 @@ export default function LiveScorePage() {
 
   useEffect(() => {
     loadData();
+    loadCommentary();
     setupSocket();
     return () => socketRef.current?.disconnect();
   }, [matchId]);
