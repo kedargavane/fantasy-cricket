@@ -10,7 +10,14 @@ const STAGE_LABELS = {
   final:  'Match complete — final result',
 };
 
+// Commentary generation is currently disabled — set to true to enable
+const COMMENTARY_ENABLED = false;
+
 async function generateCommentary(matchId, stage, overs) {
+  if (!COMMENTARY_ENABLED) {
+    console.log(`[commentary] Disabled — skipping ${stage} for match ${matchId}`);
+    return null;
+  }
   const db = getDb();
 
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
@@ -103,8 +110,9 @@ STYLE RULES:
 - Use corporate jargon ironically — "synergies", "pivot", "leverage", "circle back"
 - Use cricket slang naturally — golden duck, corridor of uncertainty, hit the deck etc
 - Mock herd mentality when multiple teams share the same captain
-- Hype contrarian picks that are paying off
-- Roast bad captain choices with no mercy — but only if data shows they flopped
+- Always name the current leader and hype them up specifically — they earned it
+- If someone made a captain pick that's dominating, crown them explicitly
+- Praise should be as loud as the roasts — "absolute scenes", "cooked the competition", "genius", "different gravy"
 - Reference memes when relevant — "main character energy", "not the hero we deserved" etc
 - At least one bullet must roast or hype a specific team by name
 - Never say "remains to be seen" or "time will tell"
