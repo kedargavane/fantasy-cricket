@@ -125,6 +125,7 @@ function createTables(db) {
       match_id        INTEGER NOT NULL REFERENCES matches(id),
       player_id       INTEGER NOT NULL REFERENCES players(id),
       is_playing_xi   INTEGER NOT NULL DEFAULT 0,
+      is_substitute   INTEGER NOT NULL DEFAULT 0,
       UNIQUE (match_id, player_id)
     );
 
@@ -322,7 +323,7 @@ function runMigrations(db) {
   try { db.exec('ALTER TABLE matches ADD COLUMN sportmonks_fixture_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN last_ball_count INTEGER NOT NULL DEFAULT 0'); } catch {}
   try { db.exec('ALTER TABLE matches ADD COLUMN live_score TEXT DEFAULT NULL'); } catch {}
-  try { db.exec('ALTER TABLE matches ADD COLUMN innings1_score TEXT DEFAULT NULL'); } catch {}
+  try { db.exec('ALTER TABLE match_squads ADD COLUMN is_substitute INTEGER NOT NULL DEFAULT 0'); } catch {}
   try { db.exec(`CREATE TABLE IF NOT EXISTS match_commentary (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     match_id INTEGER NOT NULL,
