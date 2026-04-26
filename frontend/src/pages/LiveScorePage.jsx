@@ -709,29 +709,45 @@ function ResultTab({ result }) {
 
 function BreakdownRow({ breakdown, multiplier = 1 }) {
   if (!breakdown || breakdown.notPlaying) return null;
-  const items = [
-    breakdown.playingXiBonus      && `XI +${breakdown.playingXiBonus}`,
-    breakdown.runs                 && `${breakdown.runs/1}r +${breakdown.runs}`,
-    breakdown.boundaryBonus        && `4s +${breakdown.boundaryBonus}`,
-    breakdown.sixBonus             && `6s +${breakdown.sixBonus}`,
-    breakdown.halfCenturyBonus     && `50 +${breakdown.halfCenturyBonus}`,
-    breakdown.centuryBonus         && `100 +${breakdown.centuryBonus}`,
-    breakdown.duckPenalty          && `duck ${breakdown.duckPenalty}`,
-    breakdown.strikeRatePoints     && `SR ${breakdown.strikeRatePoints > 0 ? '+' : ''}${breakdown.strikeRatePoints}`,
-    breakdown.wicketPoints         && `${breakdown.wicketPoints/25}w +${breakdown.wicketPoints}`,
-    breakdown.wicketHaulBonus      && `haul +${breakdown.wicketHaulBonus}`,
-    breakdown.maidenPoints         && `maiden +${breakdown.maidenPoints}`,
-    (breakdown.lbwBowledBonus || breakdown.bowlerDismissalBonus) && `lbw/b +${breakdown.lbwBowledBonus || breakdown.bowlerDismissalBonus}`,
-    breakdown.economyPoints        && `eco ${breakdown.economyPoints > 0 ? '+' : ''}${breakdown.economyPoints}`,
-    breakdown.catchPoints          && `ct +${breakdown.catchPoints}`,
-    breakdown.stumpingPoints       && `st +${breakdown.stumpingPoints}`,
-    breakdown.runOutPoints         && `ro +${breakdown.runOutPoints}`,
+
+  const b = breakdown;
+  const lbwBonus = b.lbwBowledBonus || b.bowlerDismissalBonus || 0;
+
+  const parts = [
+    b.playingXiBonus      && `+${b.playingXiBonus} XI`,
+    b.runs                && `${b.runs/1}r +${b.runs}`,
+    b.boundaryBonus       && `${b.boundaryBonus/1}×4 +${b.boundaryBonus}`,
+    b.sixBonus            && `${b.sixBonus/2}×6 +${b.sixBonus}`,
+    b.halfCenturyBonus    && `50 +${b.halfCenturyBonus}`,
+    b.centuryBonus        && `100 +${b.centuryBonus}`,
+    b.duckPenalty         && `duck ${b.duckPenalty}`,
+    b.strikeRatePoints    && `SR ${b.strikeRatePoints > 0 ? '+' : ''}${b.strikeRatePoints}`,
+    b.wicketPoints        && `${b.wicketPoints/25}w +${b.wicketPoints}`,
+    b.wicketHaulBonus     && `haul +${b.wicketHaulBonus}`,
+    b.maidenPoints        && `maiden +${b.maidenPoints}`,
+    lbwBonus              && `lbw/b +${lbwBonus}`,
+    b.economyPoints       && `eco ${b.economyPoints > 0 ? '+' : ''}${b.economyPoints}`,
+    b.catchPoints         && `${b.catchPoints/8}ct +${b.catchPoints}`,
+    b.stumpingPoints      && `${b.stumpingPoints/12}st +${b.stumpingPoints}`,
+    b.runOutPoints        && `${b.runOutPoints/10}ro +${b.runOutPoints}`,
   ].filter(Boolean);
-  if (items.length === 0) return null;
-  const multLabel = multiplier === 2 ? ' × 2C' : multiplier === 1.5 ? ' × 1.5VC' : '';
+
+  if (parts.length === 0) return null;
+
+  // Compute base total from breakdown
+  const base = [
+    b.playingXiBonus, b.runs, b.boundaryBonus, b.sixBonus,
+    b.halfCenturyBonus, b.centuryBonus, b.duckPenalty, b.strikeRatePoints,
+    b.wicketPoints, b.wicketHaulBonus, b.maidenPoints, lbwBonus,
+    b.economyPoints, b.catchPoints, b.stumpingPoints, b.runOutPoints,
+  ].filter(Boolean).reduce((s, v) => s + v, 0);
+
+  const multLabel = multiplier === 2 ? ' ×2C' : multiplier === 1.5 ? ' ×1.5VC' : '';
+  const total = multiplier !== 1 ? Math.round(base * multiplier) : base;
+
   return (
-    <div style={{fontSize:'0.68rem',color:'rgba(255,255,255,0.35)',marginTop:3,lineHeight:1.4}}>
-      {items.join(' · ')}{multLabel}
+    <div style={{fontSize:'0.65rem',color:'var(--text-muted)',marginTop:3,lineHeight:1.4}}>
+      {parts.join(' · ')}{multLabel} = <strong style={{color:'var(--text-secondary)'}}>{total}pts</strong>
     </div>
   );
 }
