@@ -134,7 +134,7 @@ router.get('/:id/scores', requireAuth, (req, res) => {
       p.id as player_id, p.name, p.team, p.role,
       pms.runs, pms.balls_faced, pms.fours, pms.sixes, pms.dismissal_type,
       pms.overs_bowled, pms.wickets, pms.runs_conceded, pms.maidens,
-      pms.catches, pms.stumpings, pms.run_outs,
+      pms.catches, pms.stumpings, pms.run_outs, pms.bowler_dismissal_type,
       pms.fantasy_points,
       pms.bowler_name, pms.catcher_name, pms.runout_name, pms.batting_team_id, pms.match_team,
       pms.scoreboard, pms.sort_order, pms.is_active,
@@ -151,19 +151,20 @@ router.get('/:id/scores', requireAuth, (req, res) => {
   const scoresWithBreakdown = scores.map(s => {
     let breakdown = {};
     try { ({ breakdown } = calculateFantasyPoints({
-      isPlayingXi:   s.is_playing_xi,
-      runs:          s.runs,
-      ballsFaced:    s.balls_faced,
-      fours:         s.fours,
-      sixes:         s.sixes,
-      dismissalType: s.dismissal_type,
-      oversBowled:   s.overs_bowled,
-      wickets:       s.wickets,
-      runsConceded:  s.runs_conceded,
-      maidens:       s.maidens,
-      catches:       s.catches,
-      stumpings:     s.stumpings,
-      runOuts:       s.run_outs,
+      isPlayingXi:          s.is_playing_xi,
+      runs:                 s.runs,
+      ballsFaced:           s.balls_faced,
+      fours:                s.fours,
+      sixes:                s.sixes,
+      dismissalType:        s.dismissal_type,
+      oversBowled:          s.overs_bowled,
+      wickets:              s.wickets,
+      runsConceded:         s.runs_conceded,
+      maidens:              s.maidens,
+      catches:              s.catches,
+      stumpings:            s.stumpings,
+      runOuts:              s.run_outs,
+      bowlerDismissalType:  s.bowler_dismissal_type,
     }, 'normal', DEFAULT_SCORING_CONFIG)); } catch(e) { breakdown = {}; }
     return { ...s, breakdown };
   });
@@ -321,7 +322,7 @@ router.get('/player/:playerId/season/:seasonId/stats', requireAuth, (req, res) =
     SELECT
       pms.fantasy_points, pms.runs, pms.balls_faced, pms.fours, pms.sixes,
       pms.overs_bowled, pms.wickets, pms.runs_conceded, pms.maidens,
-      pms.catches, pms.stumpings, pms.run_outs,
+      pms.catches, pms.stumpings, pms.run_outs, pms.bowler_dismissal_type,
       m.id as match_id, m.team_a, m.team_b, m.start_time
     FROM player_match_stats pms
     JOIN matches m ON m.id = pms.match_id

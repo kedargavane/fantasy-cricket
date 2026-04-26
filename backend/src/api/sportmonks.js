@@ -156,6 +156,7 @@ async function fetchFixtureScorecard(fixtureId) {
         externalPlayerId: String(pid),
         name:             lineupNames[pid] || null,
         team:             teamId === localTeamId ? localTeamName : visitorTeamName,
+        teamId:           teamId,
         runs:             0,
         ballsFaced:       0,
         fours:            0,
@@ -195,9 +196,12 @@ async function fetchFixtureScorecard(fixtureId) {
     // Process catches, stumpings, run outs from ALL innings including super overs
     const dismissal = normaliseDismissal(b.wicket_id);
     const catcherId = b.catch_stump_player_id || (b.wicket_id === 79 ? b.bowling_player_id : null);
-    const fielderTeamId = b.team_id === localTeamId ? visitorTeamId : localTeamId;
 
     if (catcherId) {
+      // Use existing team from statsMap if already known, otherwise infer
+      const fielderTeamId = statsMap[catcherId]
+        ? statsMap[catcherId].teamId
+        : (b.team_id === localTeamId ? visitorTeamId : localTeamId);
       ensurePlayer(catcherId, fielderTeamId);
       if (b.wicket_id === 55) {
         statsMap[catcherId].stumpings += 1;
@@ -206,6 +210,9 @@ async function fetchFixtureScorecard(fixtureId) {
       }
     }
     if (b.runout_by_id) {
+      const fielderTeamId = statsMap[b.runout_by_id]
+        ? statsMap[b.runout_by_id].teamId
+        : (b.team_id === localTeamId ? visitorTeamId : localTeamId);
       ensurePlayer(b.runout_by_id, fielderTeamId);
       statsMap[b.runout_by_id].runOuts += 1;
     }
@@ -256,7 +263,17 @@ async function fetchFixtureScorecard(fixtureId) {
     }
   }
 
-  const playerStats = Object.values(statsMap);
+  // Resolve bowlerDismissalType from bowlerDismissals array
+  // and clean up internal fields before returning
+  const playerStats = Object.values(statsMap).map(stat => {
+    if (stat.bowlerDismissals && stat.bowlerDismissals.length > 0) {
+      stat.bowlerDismissalType = stat.bowlerDismissals[0];
+    }
+    delete stat.bowlerDismissals;
+    delete stat.teamId; // internal field, not needed downstream
+    return stat;
+  });
+
   return { matchInfo, playerStats };
 }
 

@@ -152,6 +152,8 @@ function createTables(db) {
       catches          INTEGER NOT NULL DEFAULT 0,
       stumpings        INTEGER NOT NULL DEFAULT 0,
       run_outs         INTEGER NOT NULL DEFAULT 0,
+      -- bowling dismissal bonus
+      bowler_dismissal_type TEXT DEFAULT NULL,  -- 'bowled'|'lbw' for bonus
       -- computed
       fantasy_points   INTEGER NOT NULL DEFAULT 0,
       updated_at       TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -346,6 +348,7 @@ function runMigrations(db) {
   try { db.exec('ALTER TABLE matches ADD COLUMN visitorteam_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE players ADD COLUMN sportmonks_player_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE player_match_stats ADD COLUMN bowler_name TEXT DEFAULT NULL'); } catch {}
+  try { db.exec('ALTER TABLE player_match_stats ADD COLUMN bowler_dismissal_type TEXT DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE player_match_stats ADD COLUMN runout_name TEXT DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE player_match_stats ADD COLUMN batting_team_id INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE player_match_stats ADD COLUMN match_team TEXT DEFAULT NULL'); } catch {}

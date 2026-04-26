@@ -125,8 +125,8 @@ function upsertStats(matchId, playerStats) {
        overs_bowled, wickets, runs_conceded, maidens,
        catches, stumpings, run_outs, fantasy_points,
        bowler_name, catcher_name, runout_name, scoreboard, sort_order, is_active, batting_team_id, match_team,
-       updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       bowler_dismissal_type, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(match_id, player_id) DO UPDATE SET
       runs           = excluded.runs,
       balls_faced    = excluded.balls_faced,
@@ -148,6 +148,7 @@ function upsertStats(matchId, playerStats) {
       scoreboard     = excluded.scoreboard,
       sort_order     = excluded.sort_order,
       is_active      = excluded.is_active,
+      bowler_dismissal_type = excluded.bowler_dismissal_type,
       updated_at     = datetime('now')
   `);
 
@@ -224,7 +225,8 @@ function upsertStats(matchId, playerStats) {
         stat.sortOrder || 99,
         stat.active ? 1 : 0,
         (stat.battingTeamId != null && stat.battingTeamId !== undefined) ? stat.battingTeamId : null,
-        stat.team || null
+        stat.team || null,
+        stat.bowlerDismissalType || null
       );
     }
   });
