@@ -174,54 +174,86 @@ async function fetchFixtureScorecard(fixtureId) {
     return statsMap[pid];
   }
 
-  // ── Batting ──
+  // ── Batting ── (S1/S2 = regular innings, S3/S4 = super overs — all accumulated)
   for (const b of (f.batting || [])) {
     const pid = b.player_id;
     if (!pid) continue;
     const p = ensurePlayer(pid, b.team_id);
-    p.runs       = parseInt(b.score  || 0, 10);
-    p.ballsFaced = parseInt(b.ball   || 0, 10);
-    p.fours      = parseInt(b.four_x || 0, 10);
-    p.sixes      = parseInt(b.six_x  || 0, 10);
-    p.dismissalType = normaliseDismissal(b.wicket_id);
-    p.scoreboard    = b.scoreboard; // S1 or S2
-    p.battingTeamId = b.team_id;    // team that batted (used to separate batters from bowlers)
-    p.active        = b.active;     // currently batting
-    p.sortOrder     = b.sort || 99;
+    const isSuperOver = !['S1','S2'].includes(b.scoreboard);
 
-    // Dismissal details for scorecard display
-    p.bowlerName   = b.bowling_player_id   ? (lineupNames[b.bowling_player_id]   || null) : null;
-    // For c&b (wicket_id=79), catcher = bowler
+    // Accumulate runs/balls/boundaries across all innings including super overs
+    p.runs       += parseInt(b.score  || 0, 10);
+    p.ballsFaced += parseInt(b.ball   || 0, 10);
+    p.fours      += parseInt(b.four_x || 0, 10);
+    p.sixes      += parseInt(b.six_x  || 0, 10);
+
+    // Track regular innings balls separately for SR calculation
+    if (!isSuperOver) {
+      p.regularBallsFaced = (p.regularBallsFaced || 0) + parseInt(b.ball || 0, 10);
+    }
+
+    // Process catches, stumpings, run outs from ALL innings including super overs
+    const dismissal = normaliseDismissal(b.wicket_id);
     const catcherId = b.catch_stump_player_id || (b.wicket_id === 79 ? b.bowling_player_id : null);
-    p.catcherName  = catcherId ? (lineupNames[catcherId] || null) : null;
-    p.runoutName   = b.runout_by_id        ? (lineupNames[b.runout_by_id]        || null) : null;
-    p.bowlerId     = b.bowling_player_id   || null;
-    p.catcherId    = b.catch_stump_player_id || null;
+    const fielderTeamId = b.team_id === localTeamId ? visitorTeamId : localTeamId;
 
-    // LBW/bowled bonus
-    if ((p.dismissalType === 'lbw' || p.dismissalType === 'bowled') && b.bowling_player_id) {
-      const bowlerPid = b.bowling_player_id;
-      ensurePlayer(bowlerPid, b.team_id === localTeamId ? visitorTeamId : localTeamId);
-      statsMap[bowlerPid].bowlerDismissals.push(p.dismissalType);
+    if (catcherId) {
+      ensurePlayer(catcherId, fielderTeamId);
+      if (b.wicket_id === 55) {
+        statsMap[catcherId].stumpings += 1;
+      } else if (dismissal === 'caught' || b.wicket_id === 79) {
+        statsMap[catcherId].catches += 1;
+      }
+    }
+    if (b.runout_by_id) {
+      ensurePlayer(b.runout_by_id, fielderTeamId);
+      statsMap[b.runout_by_id].runOuts += 1;
+    }
+
+    // Only set dismissal/scoreboard from regular innings (S1/S2)
+    if (!isSuperOver) {
+      p.dismissalType = normaliseDismissal(b.wicket_id);
+      p.scoreboard    = b.scoreboard;
+      p.battingTeamId = b.team_id;
+      p.active        = b.active;
+      p.sortOrder     = b.sort || 99;
+      p.bowlerName    = b.bowling_player_id ? (lineupNames[b.bowling_player_id] || null) : null;
+      const catcherId = b.catch_stump_player_id || (b.wicket_id === 79 ? b.bowling_player_id : null);
+      p.catcherName   = catcherId ? (lineupNames[catcherId] || null) : null;
+      p.runoutName    = b.runout_by_id ? (lineupNames[b.runout_by_id] || null) : null;
+      p.bowlerId      = b.bowling_player_id || null;
+      p.catcherId     = b.catch_stump_player_id || null;
+
+      // LBW/bowled bonus
+      if ((p.dismissalType === 'lbw' || p.dismissalType === 'bowled') && b.bowling_player_id) {
+        const bowlerPid = b.bowling_player_id;
+        ensurePlayer(bowlerPid, b.team_id === localTeamId ? visitorTeamId : localTeamId);
+        statsMap[bowlerPid].bowlerDismissals.push(p.dismissalType);
+      }
     }
   }
 
-  // ── Bowling ──
+  // ── Bowling ── (accumulate all innings, track regular overs separately for economy)
   for (const b of (f.bowling || [])) {
     const pid = b.player_id;
     if (!pid) continue;
-    // Bowler's team is opposite of batting team (scoreboard S1/S2)
-    const battingTeamId = b.scoreboard === 'S1' ? localTeamId : visitorTeamId;
+    const isSuperOver = !['S1','S2'].includes(b.scoreboard);
+    const battingTeamId = ['S1', 'S3'].includes(b.scoreboard) ? localTeamId : visitorTeamId;
     const bowlingTeamId = battingTeamId === localTeamId ? visitorTeamId : localTeamId;
     const p = ensurePlayer(pid, bowlingTeamId);
-    p.scoreboard = b.scoreboard; // S1 bowlers bowl in 1st innings
+    if (!isSuperOver) p.scoreboard = b.scoreboard;
 
-    // Parse overs: Sportmonks stores as decimal e.g. 3.4 = 3 overs 4 balls
-    const rawOvers = parseFloat(b.overs || 0);
-    p.oversBowled   = rawOvers;
-    p.wickets       = parseInt(b.wickets || 0, 10);
-    p.runsConceded  = parseInt(b.runs    || 0, 10);
-    p.maidens       = parseInt(b.maiden || b.medians || 0, 10);
+    // Accumulate all bowling figures
+    p.oversBowled  += parseFloat(b.overs  || 0);
+    p.wickets      += parseInt(b.wickets  || 0, 10);
+    p.runsConceded += parseInt(b.runs     || 0, 10);
+    p.maidens      += parseInt(b.maiden || b.medians || 0, 10);
+
+    // Track regular innings overs/runs separately for economy calculation
+    if (!isSuperOver) {
+      p.regularOversBowled  = (p.regularOversBowled  || 0) + parseFloat(b.overs || 0);
+      p.regularRunsConceded = (p.regularRunsConceded || 0) + parseInt(b.runs   || 0, 10);
+    }
   }
 
   const playerStats = Object.values(statsMap);
