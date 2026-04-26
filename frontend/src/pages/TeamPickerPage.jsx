@@ -412,6 +412,7 @@ export default function TeamPickerPage() {
       {/* Legend */}
       <div className="picker-legend">
         <span className="leg-item"><span className="leg-pip pip-xi" />XI</span>
+        <span className="leg-item"><span className="leg-pip" style={{background:'#f59e0b'}} />Sub</span>
         <span className="leg-item"><span className="leg-pip pip-main" />Main</span>
         <span className="leg-item"><span className="leg-pip pip-bak" />Backup</span>
         <span className="leg-cap-item"><span className="leg-cap">C</span>2× &nbsp;<span className="leg-vc">VC</span>1.5×</span>
@@ -549,7 +550,7 @@ function PlayerRow({ p, mainIds, backupIds, captainId, vcId, mainCount, backupCo
   return (
     <div className={`prow ${isMain ? 'prow-main' : ''} ${isBak ? 'prow-bak' : ''} ${isCap ? 'prow-cap' : ''} ${isVc ? 'prow-vc' : ''}`}>
       <div className="prow-left">
-        <span className={`pip ${p.is_playing_xi ? 'pip-xi-sm' : 'pip-empty'}`} />
+        <span className={`pip ${p.is_substitute ? 'pip-sub-sm' : p.is_playing_xi ? 'pip-xi-sm' : 'pip-empty'}`} />
         <div className="prow-info" onClick={() => onInfo && onInfo(p)} style={{cursor:'pointer'}}>
           <span className="prow-name">{p.name}</span>
           <div style={{display:'flex',gap:6,alignItems:'center',marginTop:1}}>
