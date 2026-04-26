@@ -195,17 +195,18 @@ async function fetchFixtureScorecard(fixtureId) {
 
     // Process catches, stumpings, run outs from ALL innings including super overs
     const dismissal = normaliseDismissal(b.wicket_id);
+    // If catch_stump_player_id is set, it's always a catch/stumping regardless of wicket_id
     const catcherId = b.catch_stump_player_id || (b.wicket_id === 79 ? b.bowling_player_id : null);
 
     if (catcherId) {
-      // Use existing team from statsMap if already known, otherwise infer
       const fielderTeamId = statsMap[catcherId]
         ? statsMap[catcherId].teamId
         : (b.team_id === localTeamId ? visitorTeamId : localTeamId);
       ensurePlayer(catcherId, fielderTeamId);
-      if (b.wicket_id === 55) {
+      if (b.wicket_id === 55 || dismissal === 'stumped') {
         statsMap[catcherId].stumpings += 1;
-      } else if (dismissal === 'caught' || b.wicket_id === 79) {
+      } else {
+        // Any time catch_stump_player_id is set (or c&b), it's a catch
         statsMap[catcherId].catches += 1;
       }
     }
