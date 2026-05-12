@@ -238,24 +238,28 @@ router.get('/season/:seasonId/stats', requireAuth, (req, res) => {
   const capContrib = db.prepare(`
     SELECT
       u.name as team_name,
-      AVG(CASE WHEN utp_role.role = 'captain' THEN pms.fantasy_points * 2.0 ELSE 0 END) as avg_cap,
-      AVG(CASE WHEN utp_role.role = 'vice_captain' THEN pms.fantasy_points * 1.5 ELSE 0 END) as avg_vc,
-      AVG(ut.total_fantasy_points) as avg_total,
-      COUNT(DISTINCT ut.match_id) as matches
-    FROM user_teams ut
-    JOIN users u ON u.id = ut.user_id
-    JOIN matches m ON m.id = ut.match_id
-    JOIN (
-      SELECT utp.user_team_id,
-        CASE WHEN utp.player_id = ut2.resolved_captain_id THEN 'captain'
-             WHEN utp.player_id = ut2.resolved_vice_captain_id THEN 'vice_captain'
-             ELSE 'normal' END as role,
-        utp.player_id
-      FROM user_team_players utp
-      JOIN user_teams ut2 ON ut2.id = utp.user_team_id
-    ) utp_role ON utp_role.user_team_id = ut.id
-    JOIN player_match_stats pms ON pms.player_id = utp_role.player_id AND pms.match_id = ut.match_id
-    WHERE m.season_id = ? AND m.status = 'completed' AND m.id != 39
+      AVG(per_match.cap_pts)   as avg_cap,
+      AVG(per_match.vc_pts)    as avg_vc,
+      AVG(per_match.team_total) as avg_total,
+      COUNT(*) as matches
+    FROM (
+      SELECT
+        ut.user_id,
+        ut.match_id,
+        ut.total_fantasy_points as team_total,
+        MAX(CASE WHEN utp.player_id = ut.resolved_captain_id
+            THEN pms.fantasy_points * 2.0 ELSE 0 END) as cap_pts,
+        MAX(CASE WHEN utp.player_id = ut.resolved_vice_captain_id
+            THEN pms.fantasy_points * 1.5 ELSE 0 END) as vc_pts
+      FROM user_teams ut
+      JOIN matches m ON m.id = ut.match_id
+      JOIN user_team_players utp ON utp.user_team_id = ut.id
+      JOIN player_match_stats pms ON pms.player_id = utp.player_id AND pms.match_id = ut.match_id
+      WHERE m.season_id = ? AND m.status = 'completed' AND m.id != 39
+        AND ut.resolved_captain_id IS NOT NULL
+      GROUP BY ut.user_id, ut.match_id
+    ) per_match
+    JOIN users u ON u.id = per_match.user_id
     GROUP BY u.name
   `).all(seasonId);
 
