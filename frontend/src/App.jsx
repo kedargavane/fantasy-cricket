@@ -8,6 +8,7 @@ import HomePage         from './pages/HomePage.jsx';
 import TeamPickerPage   from './pages/TeamPickerPage.jsx';
 import LiveScorePage    from './pages/LiveScorePage.jsx';
 import MatchResultPage  from './pages/MatchResultPage.jsx';
+import StatsPage from './pages/StatsPage.jsx';
 import LeaderboardPage  from './pages/LeaderboardPage.jsx';
 import SettingsPage     from './pages/SettingsPage.jsx';
 import AdminDashboard   from './pages/admin/AdminDashboard.jsx';
@@ -81,6 +82,7 @@ export default function App() {
               <AppLayout><LeaderboardPage /></AppLayout>
             </ProtectedRoute>
           } />
+          <Route path="/stats" element={<ProtectedRoute><StatsPage /></ProtectedRoute>} />
           <Route path="/settings" element={
             <ProtectedRoute>
               <AppLayout><SettingsPage /></AppLayout>
