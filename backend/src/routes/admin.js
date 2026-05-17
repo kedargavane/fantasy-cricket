@@ -1330,3 +1330,43 @@ router.post('/matches/:id/reset-finalise', (req, res) => {
   return res.json({ message: `Match ${matchId} reset — ready to re-finalise` });
 });
 
+
+// ── POST /api/admin/seasons/:id/rebuild-standings ─────────────────────────────
+router.post('/seasons/:id/rebuild-standings', (req, res) => {
+  const db = getDb();
+  const seasonId = parseInt(req.params.id, 10);
+
+  db.transaction(() => {
+    // Clear existing standings
+    db.prepare('DELETE FROM season_leaderboard WHERE season_id = ?').run(seasonId);
+
+    // Recompute from all finalised matches
+    const rows = db.prepare(`
+      SELECT
+        ut.user_id,
+        SUM(ut.total_fantasy_points) as total_pts,
+        SUM(ut.units_won)            as total_units_won,
+        SUM(ut.units_won - COALESCE(mc.entry_units, 300)) as net_units,
+        COUNT(*)                     as matches_played,
+        SUM(CASE WHEN ut.match_rank <= 3 THEN 1 ELSE 0 END) as top_finishes
+      FROM user_teams ut
+      JOIN matches m ON m.id = ut.match_id
+      LEFT JOIN match_config mc ON mc.match_id = m.id
+      WHERE m.season_id = ? AND m.status = 'completed'
+      GROUP BY ut.user_id
+    `).all(seasonId);
+
+    const insert = db.prepare(`
+      INSERT INTO season_leaderboard
+        (season_id, user_id, total_fantasy_points, total_units_won, net_units, matches_played, top_finishes, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `);
+
+    for (const r of rows) {
+      insert.run(seasonId, r.user_id, r.total_pts, r.total_units_won, r.net_units, r.matches_played, r.top_finishes);
+    }
+  })();
+
+  return res.json({ message: `Standings rebuilt for season ${seasonId}` });
+});
+
