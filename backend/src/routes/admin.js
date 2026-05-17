@@ -1268,3 +1268,38 @@ router.post('/seasons/:id/add-all-users', (req, res) => {
   addAll();
   return res.json({ message: `Added ${users.length} users to season ${seasonId}` });
 });
+
+// ── POST /api/admin/fix-player-in-team ───────────────────────────────────────
+// Replaces a wrong player_id with the correct one in user_team_players for a match
+router.post('/fix-player-in-team', (req, res) => {
+  const db = getDb();
+  const { match_id, wrong_player_id, correct_player_id } = req.body;
+  if (!match_id || !wrong_player_id || !correct_player_id)
+    return res.status(400).json({ error: 'match_id, wrong_player_id, correct_player_id required' });
+
+  // Find all user_teams for this match that have the wrong player
+  const teams = db.prepare(`
+    SELECT ut.id as user_team_id, u.name as team_name
+    FROM user_team_players utp
+    JOIN user_teams ut ON ut.id = utp.user_team_id
+    JOIN users u ON u.id = ut.user_id
+    WHERE ut.match_id = ? AND utp.player_id = ?
+  `).all(match_id, wrong_player_id);
+
+  if (teams.length === 0)
+    return res.json({ message: 'No teams found with wrong player', fixed: [] });
+
+  const fix = db.prepare(
+    'UPDATE user_team_players SET player_id = ? WHERE user_team_id = ? AND player_id = ?'
+  );
+  const fixed = [];
+  db.transaction(() => {
+    for (const t of teams) {
+      fix.run(correct_player_id, t.user_team_id, wrong_player_id);
+      fixed.push(t.team_name);
+    }
+  })();
+
+  return res.json({ message: `Fixed ${fixed.length} teams`, fixed });
+});
+
