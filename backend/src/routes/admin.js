@@ -1303,3 +1303,30 @@ router.post('/fix-player-in-team', (req, res) => {
   return res.json({ message: `Fixed ${fixed.length} teams`, fixed });
 });
 
+
+// ── POST /api/admin/matches/:id/reset-finalise ────────────────────────────────
+// Clears prize distributions and resets match status so it can be re-finalised
+router.post('/matches/:id/reset-finalise', (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.id, 10);
+
+  db.transaction(() => {
+    // Clear prize distributions
+    db.prepare(`
+      DELETE FROM prize_distributions
+      WHERE user_team_id IN (SELECT id FROM user_teams WHERE match_id = ?)
+    `).run(matchId);
+
+    // Clear match prize pool
+    db.prepare('DELETE FROM match_prize_pools WHERE match_id = ?').run(matchId);
+
+    // Reset units_won on user_teams
+    db.prepare('UPDATE user_teams SET units_won = 0 WHERE match_id = ?').run(matchId);
+
+    // Reset match status to completed (not finalised)
+    db.prepare("UPDATE matches SET status = 'completed' WHERE id = ?").run(matchId);
+  })();
+
+  return res.json({ message: `Match ${matchId} reset — ready to re-finalise` });
+});
+
