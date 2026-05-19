@@ -1420,3 +1420,28 @@ router.post('/matches/:matchId/fix-captain-vc', (req, res) => {
   return res.json({ message: 'Captain/VC references fixed', changes: results });
 });
 
+
+// ── POST /api/admin/matches/:matchId/force-swap ───────────────────────────────
+router.post('/matches/:matchId/force-swap', (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.matchId, 10);
+  const { user_id, out_player_id, in_player_id } = req.body;
+
+  const ut = db.prepare('SELECT id FROM user_teams WHERE match_id = ? AND user_id = ?').get(matchId, user_id);
+  if (!ut) return res.status(404).json({ error: 'Team not found' });
+
+  db.transaction(() => {
+    // Swap out
+    db.prepare('UPDATE user_team_players SET is_backup = 1 WHERE user_team_id = ? AND player_id = ?')
+      .run(ut.id, out_player_id);
+    // Swap in
+    db.prepare('UPDATE user_team_players SET is_backup = 0 WHERE user_team_id = ? AND player_id = ?')
+      .run(ut.id, in_player_id);
+  })();
+
+  const { recomputeTeamPoints } = require('../api/syncService');
+  recomputeTeamPoints(matchId);
+
+  return res.json({ message: 'Swap done', out: out_player_id, in: in_player_id });
+});
+

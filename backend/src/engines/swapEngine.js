@@ -98,7 +98,7 @@ function processAutoSwaps(matchId) {
   const db = getDb();
 
   const xiPlayers = db.prepare(
-    'SELECT ms.player_id FROM match_squads ms WHERE ms.match_id = ? AND ms.is_playing_xi = 1'
+    'SELECT ms.player_id FROM match_squads ms WHERE ms.match_id = ? AND ms.is_playing_xi = 1 AND ms.is_substitute = 0'
   ).all(matchId);
   const playingXiIds = new Set(xiPlayers.map(r => r.player_id));
 
