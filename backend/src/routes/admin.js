@@ -1377,19 +1377,19 @@ router.post('/matches/:matchId/set-playing-xi', (req, res) => {
   const matchId = parseInt(req.params.matchId, 10);
   const { player_id, is_playing_xi, external_player_id } = req.body;
 
-  const updates = [];
-  const params = [];
+  if (player_id === undefined) return res.status(400).json({ error: 'player_id required' });
 
-  if (is_playing_xi !== undefined) { updates.push('is_playing_xi = ?'); params.push(is_playing_xi ? 1 : 0); }
-  if (external_player_id)          { updates.push('external_player_id = ?'); params.push(external_player_id); }
-
-  if (updates.length === 0) return res.status(400).json({ error: 'Nothing to update' });
-
-  params.push(matchId, player_id);
+  // Update is_playing_xi in match_squads
   const result = db.prepare(`
-    UPDATE match_squads SET ${updates.join(', ')}
+    UPDATE match_squads SET is_playing_xi = ?
     WHERE match_id = ? AND player_id = ?
-  `).run(...params);
+  `).run(is_playing_xi ? 1 : 0, matchId, player_id);
+
+  // Update external_player_id in players table if provided
+  if (external_player_id) {
+    db.prepare('UPDATE players SET external_player_id = ? WHERE id = ?')
+      .run(String(external_player_id), player_id);
+  }
 
   return res.json({ message: 'Updated', changes: result.changes });
 });
