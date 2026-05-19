@@ -1394,3 +1394,29 @@ router.post('/matches/:matchId/set-playing-xi', (req, res) => {
   return res.json({ message: 'Updated', changes: result.changes });
 });
 
+
+// ── POST /api/admin/matches/:matchId/fix-captain-vc ──────────────────────────
+router.post('/matches/:matchId/fix-captain-vc', (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.matchId, 10);
+  const { wrong_player_id, correct_player_id } = req.body;
+
+  const results = {};
+  db.transaction(() => {
+    results.captain = db.prepare(
+      'UPDATE user_teams SET captain_id = ? WHERE match_id = ? AND captain_id = ?'
+    ).run(correct_player_id, matchId, wrong_player_id).changes;
+    results.vice_captain = db.prepare(
+      'UPDATE user_teams SET vice_captain_id = ? WHERE match_id = ? AND vice_captain_id = ?'
+    ).run(correct_player_id, matchId, wrong_player_id).changes;
+    results.resolved_captain = db.prepare(
+      'UPDATE user_teams SET resolved_captain_id = ? WHERE match_id = ? AND resolved_captain_id = ?'
+    ).run(correct_player_id, matchId, wrong_player_id).changes;
+    results.resolved_vc = db.prepare(
+      'UPDATE user_teams SET resolved_vice_captain_id = ? WHERE match_id = ? AND resolved_vice_captain_id = ?'
+    ).run(correct_player_id, matchId, wrong_player_id).changes;
+  })();
+
+  return res.json({ message: 'Captain/VC references fixed', changes: results });
+});
+
