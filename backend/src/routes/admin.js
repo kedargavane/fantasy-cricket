@@ -1370,3 +1370,27 @@ router.post('/seasons/:id/rebuild-standings', (req, res) => {
   return res.json({ message: `Standings rebuilt for season ${seasonId}` });
 });
 
+
+// ── POST /api/admin/matches/:matchId/set-playing-xi ──────────────────────────
+router.post('/matches/:matchId/set-playing-xi', (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.matchId, 10);
+  const { player_id, is_playing_xi, external_player_id } = req.body;
+
+  const updates = [];
+  const params = [];
+
+  if (is_playing_xi !== undefined) { updates.push('is_playing_xi = ?'); params.push(is_playing_xi ? 1 : 0); }
+  if (external_player_id)          { updates.push('external_player_id = ?'); params.push(external_player_id); }
+
+  if (updates.length === 0) return res.status(400).json({ error: 'Nothing to update' });
+
+  params.push(matchId, player_id);
+  const result = db.prepare(`
+    UPDATE match_squads SET ${updates.join(', ')}
+    WHERE match_id = ? AND player_id = ?
+  `).run(...params);
+
+  return res.json({ message: 'Updated', changes: result.changes });
+});
+
