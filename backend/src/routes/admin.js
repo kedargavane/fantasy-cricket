@@ -1340,6 +1340,21 @@ router.post('/matches/:id/reset-finalise', (req, res) => {
 });
 
 
+
+// ── POST /api/admin/matches/:id/set-units ─────────────────────────────────────
+router.post('/matches/:id/set-units', (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const { allocations } = req.body;
+  db.transaction(() => {
+    for (const a of allocations) {
+      db.prepare('UPDATE user_teams SET units_won = ?, match_rank = ? WHERE match_id = ? AND user_id = ?')
+        .run(a.units_won, a.rank, matchId, a.user_id);
+    }
+  })();
+  return res.json({ message: 'Units set', count: allocations.length });
+});
+
 // ── POST /api/admin/seasons/:id/rebuild-standings ─────────────────────────────
 router.post('/seasons/:id/rebuild-standings', (req, res) => {
   const db = getDb();
