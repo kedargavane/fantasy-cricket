@@ -1463,3 +1463,35 @@ router.post('/matches/:matchId/force-swap', (req, res) => {
   return res.json({ message: 'Swap done', out: out_player_id, in: in_player_id });
 });
 
+
+// ── POST /api/admin/matches/:matchId/set-captain ──────────────────────────────
+router.post('/matches/:matchId/set-captain', (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.matchId, 10);
+  const { user_id, captain_id, vice_captain_id } = req.body;
+
+  const ut = db.prepare('SELECT id FROM user_teams WHERE match_id = ? AND user_id = ?').get(matchId, user_id);
+  if (!ut) return res.status(404).json({ error: 'Team not found' });
+
+  db.transaction(() => {
+    if (captain_id) {
+      db.prepare('UPDATE user_teams SET captain_id = ?, resolved_captain_id = ? WHERE id = ?')
+        .run(captain_id, captain_id, ut.id);
+      db.prepare("UPDATE user_team_players SET role = 'normal' WHERE user_team_id = ? AND role = 'captain'")
+        .run(ut.id);
+      db.prepare("UPDATE user_team_players SET role = 'captain' WHERE user_team_id = ? AND player_id = ?")
+        .run(ut.id, captain_id);
+    }
+    if (vice_captain_id) {
+      db.prepare('UPDATE user_teams SET vice_captain_id = ?, resolved_vice_captain_id = ? WHERE id = ?')
+        .run(vice_captain_id, vice_captain_id, ut.id);
+      db.prepare("UPDATE user_team_players SET role = 'normal' WHERE user_team_id = ? AND role = 'vice_captain'")
+        .run(ut.id);
+      db.prepare("UPDATE user_team_players SET role = 'vice_captain' WHERE user_team_id = ? AND player_id = ?")
+        .run(ut.id, vice_captain_id);
+    }
+  })();
+
+  return res.json({ message: 'Captain/VC set', user_id, captain_id, vice_captain_id });
+});
+
