@@ -1477,17 +1477,17 @@ router.post('/matches/:matchId/set-captain', (req, res) => {
     if (captain_id) {
       db.prepare('UPDATE user_teams SET captain_id = ?, resolved_captain_id = ? WHERE id = ?')
         .run(captain_id, captain_id, ut.id);
-      db.prepare("UPDATE user_team_players SET role_in_team = 'normal' WHERE user_team_id = ? AND role_in_team = 'captain'")
+      db.prepare("UPDATE user_team_players SET inherited_role = 'normal' WHERE user_team_id = ? AND inherited_role = 'captain'")
         .run(ut.id);
-      db.prepare("UPDATE user_team_players SET role_in_team = 'captain' WHERE user_team_id = ? AND player_id = ?")
+      db.prepare("UPDATE user_team_players SET inherited_role = 'captain' WHERE user_team_id = ? AND player_id = ?")
         .run(ut.id, captain_id);
     }
     if (vice_captain_id) {
       db.prepare('UPDATE user_teams SET vice_captain_id = ?, resolved_vice_captain_id = ? WHERE id = ?')
         .run(vice_captain_id, vice_captain_id, ut.id);
-      db.prepare("UPDATE user_team_players SET role_in_team = 'normal' WHERE user_team_id = ? AND role_in_team = 'vice_captain'")
+      db.prepare("UPDATE user_team_players SET inherited_role = 'normal' WHERE user_team_id = ? AND inherited_role = 'vice_captain'")
         .run(ut.id);
-      db.prepare("UPDATE user_team_players SET role_in_team = 'vice_captain' WHERE user_team_id = ? AND player_id = ?")
+      db.prepare("UPDATE user_team_players SET inherited_role = 'vice_captain' WHERE user_team_id = ? AND player_id = ?")
         .run(ut.id, vice_captain_id);
     }
   })();
