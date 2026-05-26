@@ -1355,6 +1355,24 @@ router.post('/matches/:id/set-units', (req, res) => {
   return res.json({ message: 'Units set', count: allocations.length });
 });
 
+
+// ── POST /api/admin/matches/:id/fix-prize-distributions ──────────────────────
+router.post('/matches/:id/fix-prize-distributions', (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const { distributions } = req.body; // [{user_team_id, rank, gross_units, net_units, fantasy_points}]
+  const pool = db.prepare('SELECT id FROM match_prize_pools WHERE match_id = ?').get(matchId);
+  if (!pool) return res.status(404).json({ error: 'No prize pool for this match' });
+  db.transaction(() => {
+    db.prepare('DELETE FROM prize_distributions WHERE match_prize_pool_id = ?').run(pool.id);
+    const ins = db.prepare('INSERT INTO prize_distributions (match_prize_pool_id, user_team_id, rank, gross_units, net_units, fantasy_points) VALUES (?, ?, ?, ?, ?, ?)');
+    for (const d of distributions) {
+      ins.run(pool.id, d.user_team_id, d.rank, d.gross_units, d.net_units, d.fantasy_points);
+    }
+  })();
+  return res.json({ message: 'Prize distributions fixed', count: distributions.length });
+});
+
 // ── POST /api/admin/seasons/:id/rebuild-standings ─────────────────────────────
 router.post('/seasons/:id/rebuild-standings', (req, res) => {
   const db = getDb();
