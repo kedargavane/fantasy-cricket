@@ -1388,19 +1388,28 @@ router.post('/matches/:matchId/set-playing-xi', (req, res) => {
 
   if (player_id === undefined) return res.status(400).json({ error: 'player_id required' });
 
-  // Update is_playing_xi in match_squads
-  const result = db.prepare(`
-    UPDATE match_squads SET is_playing_xi = ?
-    WHERE match_id = ? AND player_id = ?
-  `).run(is_playing_xi ? 1 : 0, matchId, player_id);
+  try {
+    // Update is_playing_xi in match_squads
+    const result = db.prepare(
+      'UPDATE match_squads SET is_playing_xi = ? WHERE match_id = ? AND player_id = ?'
+    ).run(is_playing_xi ? 1 : 0, matchId, player_id);
 
-  // Update external_player_id in players table if provided
-  if (external_player_id) {
-    db.prepare('UPDATE players SET external_player_id = ? WHERE id = ?')
-      .run(String(external_player_id), player_id);
+    // Update external_player_id and sportmonks_player_id in players table if provided
+    if (external_player_id) {
+      const extId = String(external_player_id);
+      // Check if another player already has this external_player_id
+      const existing = db.prepare('SELECT id FROM players WHERE external_player_id = ? AND id != ?')
+        .get(extId, player_id);
+      if (!existing) {
+        db.prepare('UPDATE players SET external_player_id = ?, sportmonks_player_id = ? WHERE id = ?')
+          .run(extId, parseInt(extId, 10) || null, player_id);
+      }
+    }
+
+    return res.json({ message: 'Updated', changes: result.changes });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
-
-  return res.json({ message: 'Updated', changes: result.changes });
 });
 
 
