@@ -1373,6 +1373,23 @@ router.post('/matches/:id/fix-prize-distributions', (req, res) => {
   return res.json({ message: 'Prize distributions fixed', count: distributions.length });
 });
 
+
+// ── POST /api/admin/matches/:id/fix-external-ids ─────────────────────────────
+router.post('/matches/:id/fix-external-ids', (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const { mappings } = req.body; // [{player_id, external_player_id}]
+  db.transaction(() => {
+    for (const m of mappings) {
+      db.prepare('UPDATE match_squads SET external_player_id = ? WHERE match_id = ? AND player_id = ?')
+        .run(String(m.external_player_id), matchId, m.player_id);
+      db.prepare('UPDATE players SET external_player_id = ?, sportmonks_player_id = ? WHERE id = ?')
+        .run(String(m.external_player_id), parseInt(m.external_player_id, 10) || null, m.player_id);
+    }
+  })();
+  return res.json({ message: 'External IDs fixed', count: mappings.length });
+});
+
 // ── POST /api/admin/seasons/:id/rebuild-standings ─────────────────────────────
 router.post('/seasons/:id/rebuild-standings', (req, res) => {
   const db = getDb();
