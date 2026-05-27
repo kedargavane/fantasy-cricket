@@ -459,15 +459,25 @@ router.post('/matches/:id/sync-squad-from/:fixtureId', async (req, res) => {
     const lineup = data.data?.lineup || [];
     if (lineup.length === 0) return res.status(400).json({ error: 'No lineup found in source fixture' });
 
-    // Build player list from lineup
-    const players = lineup.map(p => ({
-      externalPlayerId:   String(p.id),
-      sportmonksPlayerId: p.id,
-      name:  p.fullname || `${p.firstname || ''} ${p.lastname || ''}`.trim(),
-      team:  p.lineup?.team_id === data.data?.localteam_id ? match.team_a : match.team_b,
-      role:  normaliseRole(p.position?.name),
-      isPlayingXi: false, // squad only, XI confirmed at toss
-    }));
+    // Build player list from lineup — filter to only M99 teams
+    const localTeamId   = data.data?.localteam_id;
+    const visitorTeamId = data.data?.visitorteam_id;
+    const matchTeamIds  = [match.localteam_id, match.visitorteam_id].filter(Boolean);
+
+    const players = lineup
+      .filter(p => {
+        const tid = p.lineup?.team_id;
+        if (matchTeamIds.length > 0) return matchTeamIds.includes(tid);
+        return true;
+      })
+      .map(p => ({
+        externalPlayerId:   String(p.id),
+        sportmonksPlayerId: p.id,
+        name:  p.fullname || `${p.firstname || ''} ${p.lastname || ''}`.trim(),
+        team:  p.lineup?.team_id === localTeamId ? match.team_a : match.team_b,
+        role:  normaliseRole(p.position?.name),
+        isPlayingXi: false,
+      }));
 
     upsertSquad(matchId, players);
 
