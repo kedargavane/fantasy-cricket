@@ -1406,6 +1406,21 @@ router.post('/matches/:id/fix-external-ids', (req, res) => {
   return res.json({ message: 'External IDs fixed', count: mappings.length });
 });
 
+
+// ── POST /api/admin/matches/:id/fix-squad-teams ──────────────────────────────
+router.post('/matches/:id/fix-squad-teams', (req, res) => {
+  const db = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const { assignments } = req.body; // [{external_player_id, team}]
+  db.transaction(() => {
+    for (const a of assignments) {
+      db.prepare('UPDATE players SET team = ? WHERE external_player_id = ?')
+        .run(a.team, String(a.external_player_id));
+    }
+  })();
+  return res.json({ message: 'Teams fixed', count: assignments.length });
+});
+
 // ── POST /api/admin/seasons/:id/rebuild-standings ─────────────────────────────
 router.post('/seasons/:id/rebuild-standings', (req, res) => {
   const db = getDb();
