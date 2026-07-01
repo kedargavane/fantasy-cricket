@@ -119,7 +119,7 @@ router.get('/discover', async (req, res) => {
 });
 
 // ── POST /api/admin/discover/approve ─────────────────────────────────────────
-// Approve a match from CricAPI discovery into the season
+// Approve a match (CricketData UUID) into the season
 router.post('/discover/approve', async (req, res) => {
   const db = getDb();
   const { seasonId, externalMatchId, teamA, teamB, venue, matchType, startTime, entryUnits } = req.body;
@@ -128,8 +128,10 @@ router.post('/discover/approve', async (req, res) => {
     return res.status(400).json({ error: 'seasonId, externalMatchId, teamA, teamB, startTime required' });
   }
 
-  // Check not already added
-  const existing = db.prepare('SELECT id FROM matches WHERE external_match_id = ?').get(externalMatchId);
+  // Check not already added (externalMatchId stored in both columns)
+  const existing = db.prepare(
+    'SELECT id FROM matches WHERE external_match_id = ? OR sportmonks_fixture_id = ?'
+  ).get(externalMatchId, externalMatchId);
   if (existing) {
     return res.status(400).json({ error: 'Match already added to this season', matchId: existing.id });
   }
@@ -241,8 +243,9 @@ router.get('/matches', (req, res) => {
 });
 
 // ── POST /api/admin/matches ───────────────────────────────────────────────────
+// externalMatchId = CricketData UUID; seriesId = CricketData series UUID (informational)
 router.post('/matches', (req, res) => {
-  const { seasonId, externalMatchId, teamA, teamB, venue, matchType, startTime, entryUnits } = req.body;
+  const { seasonId, externalMatchId, teamA, teamB, venue, matchType, startTime, entryUnits, seriesId } = req.body;
 
   if (!seasonId || !externalMatchId || !teamA || !teamB || !startTime) {
     return res.status(400).json({ error: 'seasonId, externalMatchId, teamA, teamB, startTime required' });
@@ -383,34 +386,24 @@ router.post('/matches/:id/cleanup-squad', (req, res) => {
 });
 
 // ── POST /api/admin/seasons/:seasonId/sync-venues ───────────────────────────
-// Fetch venue info for all matches in a season
+// Fetch venue + toss info for all matches in a season via CricketData match_info
 router.post('/seasons/:seasonId/sync-venues', async (req, res) => {
-  const db = getDb();
+  const db       = getDb();
   const seasonId = parseInt(req.params.seasonId, 10);
-  const matches = db.prepare('SELECT * FROM matches WHERE season_id = ?').all(seasonId);
-  const { smGet } = require('../api/sportmonks');
-  const results = [];
+  const matches  = db.prepare('SELECT * FROM matches WHERE season_id = ?').all(seasonId);
+  const cricketdata = require('../api/cricketdata');
+  const results  = [];
 
   for (const match of matches) {
     if (!match.sportmonks_fixture_id) continue;
     try {
-      const data = await smGet(`fixtures/${match.sportmonks_fixture_id}`, { include: 'venue,localteam,visitorteam' });
-      const f = data.data || {};
-      const venue = f.venue;
-      const venueInfo = venue ? `${venue.name}${venue.city ? ', ' + venue.city : ''}` : null;
-
-      // Also get toss if missing
-      let tossInfo = match.toss_info;
-      if (!tossInfo && f.toss_won_team_id) {
-        const tossTeam = f.toss_won_team_id === f.localteam_id
-          ? f.localteam?.name : f.visitorteam?.name;
-        tossInfo = tossTeam ? `${tossTeam} won toss · elected to ${f.elected || 'bat'}` : null;
-      }
-
+      const info = await cricketdata.fetchMatchInfo(match.sportmonks_fixture_id);
+      const venueInfo = info.venueInfo || null;
+      const tossInfo  = info.tossInfo  || null;
       db.prepare('UPDATE matches SET venue_info = ?, toss_info = COALESCE(toss_info, ?) WHERE id = ?')
         .run(venueInfo, tossInfo, match.id);
       results.push({ id: match.id, venue: venueInfo, toss: tossInfo });
-    } catch(e) {
+    } catch (e) {
       results.push({ id: match.id, error: e.message });
     }
   }
@@ -425,7 +418,7 @@ router.post('/matches/:id/sync-live', async (req, res) => {
 
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
-  if (!match.sportmonks_fixture_id) return res.status(400).json({ error: 'No Sportmonks fixture ID for this match' });
+  if (!match.sportmonks_fixture_id) return res.status(400).json({ error: 'No match ID (sportmonks_fixture_id) for this match' });
 
   try {
     const { syncLiveMatch } = require('../api/syncService');
@@ -436,48 +429,20 @@ router.post('/matches/:id/sync-live', async (req, res) => {
   }
 });
 
-// ── POST /api/admin/matches/:id/sync-squad-from/:fixtureId ──────────────────
-// Copy lineup from a completed Sportmonks fixture as squad for this match
-router.post('/matches/:id/sync-squad-from/:fixtureId', async (req, res) => {
-  const db      = getDb();
-  const matchId = parseInt(req.params.id, 10);
-  const sourceFixtureId = parseInt(req.params.fixtureId, 10);
+// ── POST /api/admin/matches/:id/sync-squad-from/:sourceMatchId ───────────────
+// Copy squad from another CricketData match UUID into this match's squad
+router.post('/matches/:id/sync-squad-from/:sourceMatchId', async (req, res) => {
+  const db           = getDb();
+  const matchId      = parseInt(req.params.id, 10);
+  const sourceMatchId = req.params.sourceMatchId;  // CricketData UUID string
 
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
 
   try {
-    const sportmonks = require('../api/sportmonks');
-
-    // Fetch lineup from source fixture
-    const axios = require('axios');
-    const { data } = await axios.get(
-      `https://cricket.sportmonks.com/api/v2.0/fixtures/${sourceFixtureId}`,
-      { params: { api_token: process.env.SPORTMONKS_TOKEN, include: 'lineup' }, timeout: 15000 }
-    );
-
-    const lineup = data.data?.lineup || [];
-    if (lineup.length === 0) return res.status(400).json({ error: 'No lineup found in source fixture' });
-
-    // Build player list from lineup — filter to only M99 teams
-    const localTeamId   = data.data?.localteam_id;
-    const visitorTeamId = data.data?.visitorteam_id;
-    const matchTeamIds  = [match.localteam_id, match.visitorteam_id].filter(Boolean);
-
-    const players = lineup
-      .filter(p => {
-        const tid = p.lineup?.team_id;
-        if (matchTeamIds.length > 0) return matchTeamIds.includes(tid);
-        return true;
-      })
-      .map(p => ({
-        externalPlayerId:   String(p.id),
-        sportmonksPlayerId: p.id,
-        name:  p.fullname || `${p.firstname || ''} ${p.lastname || ''}`.trim(),
-        team:  p.lineup?.team_id === localTeamId ? match.team_a : match.team_b,
-        role:  normaliseRole(p.position?.name),
-        isPlayingXi: false,
-      }));
+    const cricketdata = require('../api/cricketdata');
+    const players     = await cricketdata.fetchMatchSquad(sourceMatchId);
+    if (players.length === 0) return res.status(400).json({ error: 'No squad found in source match' });
 
     upsertSquad(matchId, players);
 
@@ -494,17 +459,16 @@ router.post('/matches/:id/sync-squad-from/:fixtureId', async (req, res) => {
 });
 
 // ── POST /api/admin/matches/:id/sync-squad ───────────────────────────────────
-// Pull lineup from Sportmonks
+// Pull squad from CricketData
 router.post('/matches/:id/sync-squad', async (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.id, 10);
 
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
-  if (!match.sportmonks_fixture_id) return res.status(400).json({ error: 'No Sportmonks fixture ID' });
+  if (!match.sportmonks_fixture_id) return res.status(400).json({ error: 'No match ID (sportmonks_fixture_id) for this match' });
 
   try {
-    const sportmonks = require('../api/sportmonks');
     const { syncPlayingXi } = require('../api/syncService');
     const result = await syncPlayingXi(matchId, match.sportmonks_fixture_id);
 
@@ -945,14 +909,14 @@ router.post('/reprocess-swaps/:matchId', (req, res) => {
 // ════════════════════════════════════════════════════════
 
 // ── POST /api/admin/series/preview ───────────────────────────────────────────
-// Fetch all fixtures from a Sportmonks season ID and return for admin preview
+// Fetch all matches from a CricketData series UUID and return for admin preview
 router.post('/series/preview', async (req, res) => {
-  const { seasonId: smSeasonId } = req.body;
-  if (!smSeasonId) return res.status(400).json({ error: 'seasonId required' });
+  const { seriesId } = req.body;
+  if (!seriesId) return res.status(400).json({ error: 'seriesId required (CricketData series UUID)' });
 
   try {
-    const sportmonks = require('../api/sportmonks');
-    const fixtures = await sportmonks.fetchSeasonFixtures(smSeasonId);
+    const cricketdata = require('../api/cricketdata');
+    const fixtures    = await cricketdata.fetchSeriesMatches(seriesId);
 
     const db = getDb();
     const existing = new Set(
@@ -960,39 +924,30 @@ router.post('/series/preview', async (req, res) => {
         .all().map(r => r.sportmonks_fixture_id)
     );
 
-    // Fetch team names for all unique team IDs
-    const teamIds = new Set();
-    fixtures.forEach(f => { teamIds.add(f.localteamId); teamIds.add(f.visitorteamId); });
-    const teamNames = {};
-    for (const id of teamIds) {
-      try {
-        const t = await sportmonks.fetchTeamById(id);
-        teamNames[id] = t.name;
-      } catch { teamNames[id] = String(id); }
-    }
-
     const matches = fixtures.map(f => ({
-      sportmonksFixtureId: f.sportmonksFixtureId,
-      sportmonksSeasonId:  parseInt(smSeasonId),
-      localteamId:         f.localteamId,
-      visitorteamId:       f.visitorteamId,
-      name:                `${teamNames[f.localteamId] || f.localteamId} vs ${teamNames[f.visitorteamId] || f.visitorteamId}`,
-      teamA:               teamNames[f.localteamId] || String(f.localteamId),
-      teamB:               teamNames[f.visitorteamId] || String(f.visitorteamId),
-      startTime:           f.startingAt,
-      status:              f.status,
-      alreadyAdded:        existing.has(f.sportmonksFixtureId),
+      externalMatchId: f.externalMatchId,
+      name:            f.name || `${(f.teams || [])[0] || ''} vs ${(f.teams || [])[1] || ''}`,
+      teamA:           (f.teams || [])[0] || '',
+      teamB:           (f.teams || [])[1] || '',
+      startTime:       f.dateTimeGMT || f.date,
+      matchType:       f.matchType || 't20',
+      status:          f.status,
+      matchStarted:    f.matchStarted,
+      matchEnded:      f.matchEnded,
+      hasSquad:        f.hasSquad,
+      fantasyEnabled:  f.fantasyEnabled,
+      alreadyAdded:    existing.has(f.externalMatchId),
     }));
 
-    return res.json({ seasonId: smSeasonId, matches });
+    return res.json({ seriesId, matches });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
 
 // ── POST /api/admin/series/import ────────────────────────────────────────────
-// Import selected Sportmonks fixtures into a season
-// Expects fixtures array with teamA, teamB, startTime already resolved from preview
+// Import selected CricketData matches into a season.
+// Expects fixtures array resolved from /series/preview (externalMatchId, teamA, teamB, startTime).
 router.post('/series/import', async (req, res) => {
   const { seasonId, fixtures } = req.body;
   if (!seasonId || !Array.isArray(fixtures) || fixtures.length === 0) {
@@ -1007,24 +962,24 @@ router.post('/series/import', async (req, res) => {
 
   for (const f of fixtures) {
     const existing = db.prepare(
-      'SELECT id FROM matches WHERE sportmonks_fixture_id = ?'
-    ).get(f.sportmonksFixtureId);
+      'SELECT id FROM matches WHERE sportmonks_fixture_id = ? OR external_match_id = ?'
+    ).get(f.externalMatchId, f.externalMatchId);
 
     if (existing) {
-      results.push({ fixtureId: f.sportmonksFixtureId, status: 'already_exists', matchId: existing.id });
+      results.push({ externalMatchId: f.externalMatchId, status: 'already_exists', matchId: existing.id });
       continue;
     }
 
     const matchId = upsertMatch(seasonId, {
-      sportmonksFixtureId: f.sportmonksFixtureId,
-      teamA:     f.teamA,
-      teamB:     f.teamB,
-      venue:     f.venue || '',
-      matchType: 't20',
-      startTime: f.startTime,
+      externalMatchId: f.externalMatchId,
+      teamA:           f.teamA,
+      teamB:           f.teamB,
+      venue:           f.venue     || '',
+      matchType:       f.matchType || 't20',
+      startTime:       f.startTime || f.dateTimeGMT,
     });
 
-    results.push({ fixtureId: f.sportmonksFixtureId, status: 'imported', matchId, name: f.name });
+    results.push({ externalMatchId: f.externalMatchId, status: 'imported', matchId, name: f.name });
   }
 
   return res.json({
@@ -1179,13 +1134,11 @@ function normaliseRole(role) {
 }
 
 // ── POST /api/admin/sync-all-squads ──────────────────────────────────────────
-// Immediately sync squads for all upcoming matches with 0 players
+// Immediately sync squads for all upcoming matches with 0 players (CricketData)
 router.post('/sync-all-squads', async (req, res) => {
-  const db    = getDb();
-  const axios = require('axios');
+  const db      = getDb();
   const matches = db.prepare(`
-    SELECT m.id, m.sportmonks_fixture_id, m.sportmonks_season_id,
-           m.localteam_id, m.visitorteam_id, m.team_a, m.team_b
+    SELECT m.id, m.sportmonks_fixture_id, m.team_a, m.team_b
     FROM matches m
     WHERE m.status = 'upcoming'
     AND m.sportmonks_fixture_id IS NOT NULL
@@ -1194,45 +1147,17 @@ router.post('/sync-all-squads', async (req, res) => {
 
   if (matches.length === 0) return res.json({ message: 'All squads already loaded', synced: 0 });
 
-  const sportmonks = require('../api/sportmonks');
-  const results = [];
+  const cricketdata = require('../api/cricketdata');
+  const results     = [];
 
   for (const match of matches) {
     try {
-      let localteamId  = match.localteam_id;
-      let visitorteamId = match.visitorteam_id;
-      let seasonId     = match.sportmonks_season_id;
-
-      // If team IDs missing, fetch from Sportmonks fixture
-      if (!localteamId || !visitorteamId || !seasonId) {
-        const fixtureRes = await axios.get(
-          `https://cricket.sportmonks.com/api/v2.0/fixtures/${match.sportmonks_fixture_id}`,
-          { params: { api_token: process.env.SPORTMONKS_TOKEN }, timeout: 15000 }
-        );
-        const f = fixtureRes.data?.data || {};
-        localteamId   = f.localteam_id;
-        visitorteamId = f.visitorteam_id;
-        seasonId      = f.season_id;
-        // Update match with correct IDs
-        db.prepare('UPDATE matches SET localteam_id=?, visitorteam_id=?, sportmonks_season_id=? WHERE id=?')
-          .run(localteamId, visitorteamId, seasonId, match.id);
-      }
-
-      const allPlayers = [];
-      for (const [teamId, teamName] of [
-        [localteamId, match.team_a],
-        [visitorteamId, match.team_b],
-      ]) {
-        try {
-          const squad = await sportmonks.fetchSquadByTeamAndSeason(teamId, seasonId);
-          for (const p of squad) allPlayers.push({ ...p, team: teamName });
-        } catch (err) {
-          results.push({ matchId: match.id, team: teamName, error: err.message });
-        }
-      }
-      if (allPlayers.length > 0) {
-        upsertSquad(match.id, allPlayers);
-        results.push({ matchId: match.id, players: allPlayers.length, name: `${match.team_a} vs ${match.team_b}` });
+      const players = await cricketdata.fetchMatchSquad(match.sportmonks_fixture_id);
+      if (players.length > 0) {
+        upsertSquad(match.id, players);
+        results.push({ matchId: match.id, players: players.length, name: `${match.team_a} vs ${match.team_b}` });
+      } else {
+        results.push({ matchId: match.id, players: 0, name: `${match.team_a} vs ${match.team_b}`, note: 'no squad yet' });
       }
     } catch (err) {
       results.push({ matchId: match.id, error: err.message });

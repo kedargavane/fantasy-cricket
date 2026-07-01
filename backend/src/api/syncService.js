@@ -1,11 +1,11 @@
 'use strict';
 
-const { getDb }    = require('../db/database');
-const sportmonks   = require('./sportmonks');
+const { getDb }       = require('../db/database');
+const cricketdata     = require('./cricketdata');
 const { calculateFantasyPoints, DEFAULT_SCORING_CONFIG } = require('../engines/scoringEngine');
 const { processAutoSwaps } = require('../engines/swapEngine');
 
-// ── Upsert squad from Sportmonks lineup ──────────────────────────────────────
+// ── Upsert squad from CricketData squad/lineup ───────────────────────────────
 function upsertSquad(matchId, players) {
   const db = getDb();
 
@@ -15,8 +15,7 @@ function upsertSquad(matchId, players) {
     ON CONFLICT(external_player_id) DO UPDATE SET
       name = excluded.name,
       team = excluded.team,
-      role = excluded.role,
-      sportmonks_player_id = excluded.sportmonks_player_id
+      role = excluded.role
   `);
 
   const upsertSquadEntry = db.prepare(`
@@ -32,8 +31,9 @@ function upsertSquad(matchId, players) {
 
   const doUpsert = db.transaction((players) => {
     for (const p of players) {
-      const extId = String(p.externalPlayerId || p.sportmonks_player_id);
-      upsertPlayer.run(p.name, p.team, p.role || 'batsman', extId, p.sportmonksPlayerId || null);
+      const extId = String(p.externalPlayerId);
+      // sportmonks_player_id is null for CricketData players (UUIDs aren't integers)
+      upsertPlayer.run(p.name, p.team, p.role || 'batsman', extId, null);
       const player = getPlayerByExternal.get(extId);
       if (!player) continue;
       upsertSquadEntry.run(matchId, player.id, p.isPlayingXi ? 1 : 0);
@@ -43,34 +43,34 @@ function upsertSquad(matchId, players) {
   doUpsert(players);
 }
 
-// ── Sync playing XI from Sportmonks lineup ───────────────────────────────────
-async function syncPlayingXi(matchId, sportmonksFixtureId) {
-  const db = getDb();
-  const lineup = await sportmonks.fetchFixtureLineup(sportmonksFixtureId);
+// ── Sync playing XI from CricketData match squad ─────────────────────────────
+// CricketData has no separate pre-match XI endpoint; match_squad returns the
+// announced squad. cronJobs checks hasSquad before calling this.
+async function syncPlayingXi(matchId, externalMatchId) {
+  const db     = getDb();
+  const lineup = await cricketdata.fetchMatchSquad(externalMatchId);
   if (!lineup || lineup.length === 0) return { confirmed: false, count: 0 };
 
-  const getPlayer = db.prepare(
-    'SELECT id FROM players WHERE external_player_id = ?'
-  );
-  const updateXi = db.prepare(
-    'UPDATE match_squads SET is_playing_xi = ?, is_substitute = ? WHERE match_id = ? AND player_id = ?'
-  );
-  const resetXi = db.prepare(
-    'UPDATE match_squads SET is_playing_xi = 0, is_substitute = 0 WHERE match_id = ?'
-  );
+  // Mark all returned players as playing XI
+  const xiPlayers = lineup.map(p => ({ ...p, isPlayingXi: true }));
+  upsertSquad(matchId, xiPlayers);
+
+  // Reset all XI flags then re-apply for this set
+  const getPlayer = db.prepare('SELECT id FROM players WHERE external_player_id = ?');
+  const resetXi   = db.prepare('UPDATE match_squads SET is_playing_xi = 0 WHERE match_id = ?');
+  const updateXi  = db.prepare('UPDATE match_squads SET is_playing_xi = 1 WHERE match_id = ? AND player_id = ?');
 
   const doSync = db.transaction(() => {
     resetXi.run(matchId);
-    for (const p of lineup) {
+    for (const p of xiPlayers) {
       const player = getPlayer.get(String(p.externalPlayerId));
-      if (player) updateXi.run(1, p.isSubstitute || 0, matchId, player.id);
+      if (player) updateXi.run(matchId, player.id);
     }
   });
   doSync();
 
   // Award +4 Playing XI bonus immediately to all confirmed XI players
-  // by upserting minimal stat records with isPlayingXi=true
-  const xiPlayers = db.prepare(
+  const xiDbPlayers = db.prepare(
     'SELECT player_id FROM match_squads WHERE match_id = ? AND is_playing_xi = 1'
   ).all(matchId);
 
@@ -83,21 +83,18 @@ async function syncPlayingXi(matchId, sportmonksFixtureId) {
     ON CONFLICT(match_id, player_id) DO NOTHING
   `);
 
-  const { calculateFantasyPoints, DEFAULT_SCORING_CONFIG } = require('../engines/scoringEngine');
   const insertXi = db.transaction(() => {
-    for (const { player_id } of xiPlayers) {
+    for (const { player_id } of xiDbPlayers) {
       upsertXiStat.run(matchId, player_id);
     }
   });
   insertXi();
 
-  // Note: processAutoSwaps now runs when match goes live (liveDetector)
-  // not during XI sync, to ensure both teams' XIs are confirmed
   recomputeTeamPoints(matchId);
   return { confirmed: true, count: lineup.length };
 }
 
-// ── Upsert player stats from Sportmonks scorecard ───────────────────────────
+// ── Upsert player stats from CricketData scorecard ───────────────────────────
 function upsertStats(matchId, playerStats) {
   const db = getDb();
 
@@ -144,7 +141,6 @@ function upsertStats(matchId, playerStats) {
       bowler_name    = excluded.bowler_name,
       catcher_name   = excluded.catcher_name,
       runout_name    = excluded.runout_name,
-      batting_team_id = COALESCE(excluded.batting_team_id, batting_team_id),
       scoreboard     = excluded.scoreboard,
       sort_order     = excluded.sort_order,
       is_active      = excluded.is_active,
@@ -163,15 +159,14 @@ function upsertStats(matchId, playerStats) {
       if (!player && stat.name) {
         const byName = getPlayerByName.get(stat.name);
         if (byName) {
-          db.prepare('UPDATE players SET external_player_id = ?, sportmonks_player_id = ? WHERE id = ?')
-            .run(extId, parseInt(extId) || null, byName.id);
+          db.prepare('UPDATE players SET external_player_id = ? WHERE id = ?')
+            .run(extId, byName.id);
           player = byName;
         }
       }
 
-      // Create new player if still not found
+      // Last resort: check match_squads for player with same name in this match
       if (!player) {
-        // Last resort: check match_squads for player with same name in this match
         if (stat.name) {
           const inSquad = db.prepare(`
             SELECT p.id FROM players p
@@ -179,35 +174,29 @@ function upsertStats(matchId, playerStats) {
             WHERE ms.match_id = ? AND LOWER(p.name) = LOWER(?)
           `).get(matchId, stat.name);
           if (inSquad) {
-            // Update external_player_id to link scorecard → existing player
-            db.prepare('UPDATE players SET external_player_id = ?, sportmonks_player_id = ? WHERE id = ?')
-              .run(extId, parseInt(extId) || null, inSquad.id);
-            // Never overwrite franchise team name with national team from scorecard
+            db.prepare('UPDATE players SET external_player_id = ? WHERE id = ?')
+              .run(extId, inSquad.id);
             player = inSquad;
           }
         }
         if (!player) {
-          // Only set team on new players — don't overwrite franchise team with national team
           upsertPlayer.run(
             stat.name || `Player ${extId}`,
             stat.team || '',
             stat.role || 'batsman',
             extId,
-            parseInt(extId) || null
+            null  // CricketData uses UUID strings, not integer sportmonks IDs
           );
           player = getPlayerByExternal.get(extId);
           if (!player) continue;
         }
       }
 
-      // Mark as playing XI
+      // Mark as playing XI (scorecard players are always confirmed XI)
       addToSquad.run(matchId, player.id);
 
-      // Always true for scorecard players
-      const isPlayingXi = true;
-
       const { total: fantasyPoints } = calculateFantasyPoints(
-        { ...stat, isPlayingXi },
+        { ...stat, isPlayingXi: true },
         'normal',
         DEFAULT_SCORING_CONFIG
       );
@@ -218,14 +207,14 @@ function upsertStats(matchId, playerStats) {
         stat.oversBowled, stat.wickets, stat.runsConceded, stat.maidens,
         stat.catches, stat.stumpings, stat.runOuts,
         fantasyPoints,
-        stat.bowlerName || null,
+        stat.bowlerName  || null,
         stat.catcherName || null,
-        stat.runoutName || null,
-        stat.scoreboard || null,
-        stat.sortOrder || 99,
-        stat.active ? 1 : 0,
-        (stat.battingTeamId != null && stat.battingTeamId !== undefined) ? stat.battingTeamId : null,
-        stat.team || null,
+        stat.runoutName  || null,
+        stat.scoreboard  || null,
+        stat.sortOrder   || 99,
+        stat.active      ? 1 : 0,
+        null,  // batting_team_id: CricketData doesn't expose numeric team IDs
+        stat.team        || null,
         stat.bowlerDismissalType || null
       );
     }
@@ -243,48 +232,37 @@ function recomputeTeamPoints(matchId) {
     FROM user_teams WHERE match_id = ?
   `).all(matchId);
 
-  const getPlayerStats = db.prepare(
-    'SELECT pms.* FROM player_match_stats pms WHERE pms.match_id = ? AND pms.player_id = ?'
-  );
+  const getPlayerStats  = db.prepare('SELECT pms.* FROM player_match_stats pms WHERE pms.match_id = ? AND pms.player_id = ?');
   const getAllTeamPlayers = db.prepare(`
     SELECT utp.player_id, utp.is_backup, utp.backup_order
     FROM user_team_players utp WHERE utp.user_team_id = ?
     ORDER BY utp.is_backup ASC, utp.backup_order ASC
   `);
-  const getSquadEntry = db.prepare(
-    'SELECT is_playing_xi FROM match_squads WHERE match_id = ? AND player_id = ?'
-  );
-  const getSwapLog = db.prepare(
-    'SELECT swapped_out_player_id, swapped_in_player_id FROM user_team_swaps WHERE user_team_id = ?'
-  );
-  const updateTeamPoints = db.prepare(
-    'UPDATE user_teams SET total_fantasy_points = ? WHERE id = ?'
-  );
+  const getSquadEntry   = db.prepare('SELECT is_playing_xi FROM match_squads WHERE match_id = ? AND player_id = ?');
+  const getSwapLog      = db.prepare('SELECT swapped_out_player_id, swapped_in_player_id FROM user_team_swaps WHERE user_team_id = ?');
+  const updateTeamPoints = db.prepare('UPDATE user_teams SET total_fantasy_points = ? WHERE id = ?');
 
   const recomputeAll = db.transaction(() => {
     for (const team of userTeams) {
       const captainId = team.resolved_captain_id || team.captain_id;
       const vcId      = team.resolved_vice_captain_id || team.vice_captain_id;
-      const allPlayers  = getAllTeamPlayers.all(team.id);
-      const mainPlayers = allPlayers.filter(p => !p.is_backup);
+      const allPlayers    = getAllTeamPlayers.all(team.id);
+      const mainPlayers   = allPlayers.filter(p => !p.is_backup);
       const backupPlayers = allPlayers.filter(p => p.is_backup)
                                       .sort((a, b) => a.backup_order - b.backup_order);
 
-      // Use swap log if swaps were processed — it's the definitive source of truth
-      const swapLog = getSwapLog.all(team.id);
+      const swapLog       = getSwapLog.all(team.id);
       const swappedOutIds = new Set(swapLog.map(s => s.swapped_out_player_id));
       const swappedInIds  = new Set(swapLog.map(s => s.swapped_in_player_id));
 
       let activePlayers;
 
       if (team.swap_processed_at) {
-        // Trust the swap log: active = mains not swapped out + swapped-in backups
         activePlayers = [
           ...mainPlayers.filter(p => !swappedOutIds.has(p.player_id)).map(p => p.player_id),
           ...backupPlayers.filter(p => swappedInIds.has(p.player_id)).map(p => p.player_id),
         ];
       } else {
-        // Swaps not processed yet — use XI status from squad
         activePlayers = [];
         const usedBackups = new Set();
         for (const main of mainPlayers) {
@@ -355,11 +333,11 @@ function recomputeTeamPoints(matchId) {
   } catch {}
 }
 
-// ── Sync live match from Sportmonks ──────────────────────────────────────────
-async function syncLiveMatch(matchId, sportmonksFixtureId) {
+// ── Sync live match from CricketData scorecard ───────────────────────────────
+async function syncLiveMatch(matchId, externalMatchId) {
   const db = getDb();
   try {
-    const { matchInfo, playerStats } = await sportmonks.fetchFixtureScorecard(sportmonksFixtureId);
+    const { matchInfo, playerStats } = await cricketdata.fetchFixtureScorecard(externalMatchId);
 
     if (!playerStats || playerStats.length === 0) {
       console.log(`[syncLiveMatch] matchId=${matchId}: 0 players in scorecard`);
@@ -369,13 +347,10 @@ async function syncLiveMatch(matchId, sportmonksFixtureId) {
     upsertStats(matchId, playerStats);
 
     // Give +4 to all confirmed XI players not yet in scorecard
-    // (players who haven't batted/bowled yet still get playing XI bonus)
     const xiPlayers = db.prepare(
       'SELECT player_id FROM match_squads WHERE match_id = ? AND is_playing_xi = 1'
     ).all(matchId);
-    const hasStats = db.prepare(
-      'SELECT player_id FROM player_match_stats WHERE match_id = ?'
-    ).all(matchId).map(r => r.player_id);
+    const hasStats    = db.prepare('SELECT player_id FROM player_match_stats WHERE match_id = ?').all(matchId).map(r => r.player_id);
     const hasStatsSet = new Set(hasStats);
 
     const insertXiBonus = db.prepare(`
@@ -388,9 +363,7 @@ async function syncLiveMatch(matchId, sportmonksFixtureId) {
     `);
     const addXiBonuses = db.transaction(() => {
       for (const { player_id } of xiPlayers) {
-        if (!hasStatsSet.has(player_id)) {
-          insertXiBonus.run(matchId, player_id);
-        }
+        if (!hasStatsSet.has(player_id)) insertXiBonus.run(matchId, player_id);
       }
     });
     addXiBonuses();
@@ -398,26 +371,25 @@ async function syncLiveMatch(matchId, sportmonksFixtureId) {
     recomputeTeamPoints(matchId);
 
     const newStatus = matchInfo.matchEnded ? 'completed' : 'live';
-    // Store as JSON array for accurate frontend parsing
+
+    // Serialise score — CricketData score items have teamName from inning string
     const scoreStr = JSON.stringify(matchInfo.score.map(s => ({
-      teamId:   s.teamId,
-      teamName: s.teamName || (s.teamId === matchInfo.localTeamId ? matchInfo.teamA : matchInfo.teamB),
+      teamName: s.teamName || '',
       r: s.r, w: s.w, o: s.o, inning: s.inning,
     })));
 
-    // Store innings scores for venue history
+    // Use index-based innings access (CricketData inning field is a string, not a number)
     const innings = matchInfo.score || [];
-    const inn1 = innings.find(s => s.inning === 1);
-    const inn2 = innings.find(s => s.inning === 2);
+    const inn1 = innings[0] || null;
+    const inn2 = innings[1] || null;
     const inn1Score = inn1 ? `${inn1.r}/${inn1.w} (${inn1.o} ov)` : null;
     const inn2Score = inn2 ? `${inn2.r}/${inn2.w} (${inn2.o} ov)` : null;
 
     db.prepare(`
       UPDATE matches SET status = ?, last_synced = datetime('now'), live_score = ?,
-        innings1_score = COALESCE(?, innings1_score),
         innings2_score = COALESCE(?, innings2_score)
       WHERE id = ?
-    `).run(newStatus, scoreStr, inn1Score, inn2Score, matchId);
+    `).run(newStatus, scoreStr, inn2Score, matchId);
 
     console.log(`[syncLiveMatch] matchId=${matchId}: ${playerStats.length} players, status=${newStatus}`);
     return { success: true, status: newStatus, playersUpdated: playerStats.length };
@@ -427,30 +399,40 @@ async function syncLiveMatch(matchId, sportmonksFixtureId) {
   }
 }
 
-// ── Upsert a match from Sportmonks fixture data ──────────────────────────────
+// ── Upsert a match from CricketData match data ───────────────────────────────
 function upsertMatch(seasonId, matchData) {
   const db = getDb();
+
+  // Support CricketData UUIDs (externalMatchId) and legacy Sportmonks IDs
+  const externalId = matchData.externalMatchId
+    || (matchData.sportmonksFixtureId ? `sm-${matchData.sportmonksFixtureId}` : null)
+    || String(matchData.sportmonksFixtureId || '');
+
+  const fixtureId = matchData.sportmonksFixtureId || matchData.externalMatchId || null;
+
+  // Check by sportmonks_fixture_id (stores CricketData UUID now) or external_match_id
   const existing = db.prepare(
-    'SELECT id FROM matches WHERE sportmonks_fixture_id = ?'
-  ).get(matchData.sportmonksFixtureId);
+    'SELECT id FROM matches WHERE sportmonks_fixture_id = ? OR external_match_id = ?'
+  ).get(String(fixtureId || externalId), String(externalId));
 
   if (existing) return existing.id;
 
-  // Use sportmonks fixture ID as external_match_id too
-  const extId = `sm-${matchData.sportmonksFixtureId}`;
   const result = db.prepare(`
-    INSERT INTO matches (season_id, external_match_id, sportmonks_fixture_id, sportmonks_season_id, localteam_id, visitorteam_id, team_a, team_b, venue, match_type, status, start_time)
+    INSERT INTO matches
+      (season_id, external_match_id, sportmonks_fixture_id,
+       sportmonks_season_id, localteam_id, visitorteam_id,
+       team_a, team_b, venue, match_type, status, start_time)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'upcoming', ?)
   `).run(
     seasonId,
-    extId,
-    matchData.sportmonksFixtureId,
+    String(externalId),
+    String(fixtureId || externalId),
     matchData.sportmonksSeasonId || null,
-    matchData.localteamId || null,
-    matchData.visitorteamId || null,
+    matchData.localteamId        || null,
+    matchData.visitorteamId      || null,
     matchData.teamA,
     matchData.teamB,
-    matchData.venue || '',
+    matchData.venue     || '',
     matchData.matchType || 't20',
     matchData.startTime
   );

@@ -358,6 +358,13 @@ function runMigrations(db) {
   try { db.exec('ALTER TABLE player_match_stats ADD COLUMN is_active INTEGER DEFAULT 0'); } catch {}
   try { db.exec("UPDATE matches SET status = 'cancelled' WHERE status NOT IN ('upcoming','live','completed','abandoned','cancelled')"); } catch {}
 
+  // ── CricketData migration ─────────────────────────────────────────────────
+  // external_match_id already exists in matches schema; this is a safe no-op on existing DBs.
+  try { db.exec('ALTER TABLE matches ADD COLUMN external_match_id TEXT'); } catch {}
+  // cricketdata_player_id stores the CricketData UUID for a player (external_player_id is now that UUID too)
+  try { db.exec('ALTER TABLE players ADD COLUMN cricketdata_player_id TEXT'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_players_cricketdata ON players(cricketdata_player_id)'); } catch {}
+
   // ── Add feedback table ────────────────────────────────────────────────────
   try {
     db.exec(`CREATE TABLE IF NOT EXISTS feedback (
