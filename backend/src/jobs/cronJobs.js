@@ -105,10 +105,12 @@ function startCronJobs(io) {
         const lastSynced = match.last_synced ? new Date(match.last_synced) : null;
         const secondsSinceSync = lastSynced ? (Date.now() - lastSynced.getTime()) / 1000 : 999;
 
-        if (currentBalls > lastBalls || secondsSinceSync > 30) {
+        if (currentBalls > lastBalls || (secondsSinceSync > 30 && currentBalls >= lastBalls)) {
           console.log('[livePoller] Match', match.id, 'syncing — balls:', lastBalls, '->', currentBalls, 'seconds since sync:', Math.round(secondsSinceSync));
-          matchBallCount.set(match.id, currentBalls);
-          db.prepare('UPDATE matches SET last_ball_count = ? WHERE id = ?').run(currentBalls, match.id);
+          if (currentBalls >= lastBalls) {
+            matchBallCount.set(match.id, currentBalls);
+            db.prepare('UPDATE matches SET last_ball_count = ? WHERE id = ?').run(currentBalls, match.id);
+          }
 
           const result = await syncLiveMatch(match.id, match.sportmonks_fixture_id);
           if (result.success) {
