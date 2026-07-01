@@ -53,11 +53,7 @@ function normaliseDismissal(dismissalStr) {
 }
 
 // ── Fetch match squad ─────────────────────────────────────────────────────────
-// GET /match_squad?id=matchId
-// Returns players with isPlayingXi: false — caller sets true when XI confirmed
-async function fetchMatchSquad(matchId) {
-  const data  = await cdGet('match_squad', { id: matchId });
-  const teams = data.data || [];
+function squadFromTeams(teams) {
   const players = [];
   for (const team of teams) {
     for (const p of (team.players || [])) {
@@ -71,6 +67,28 @@ async function fetchMatchSquad(matchId) {
     }
   }
   return players;
+}
+
+// GET /series_squad?id=seriesId
+async function fetchSeriesSquad(seriesId) {
+  const data  = await cdGet('series_squad', { id: seriesId });
+  const teams = data.data || [];
+  return squadFromTeams(teams);
+}
+
+// GET /match_squad?id=matchId — falls back to /series_squad if empty
+async function fetchMatchSquad(matchId) {
+  const data    = await cdGet('match_squad', { id: matchId });
+  const players = squadFromTeams(data.data || []);
+  if (players.length > 0) return players;
+
+  // Fallback: series_squad using the same matchId
+  try {
+    const fallback = await cdGet('series_squad', { id: matchId });
+    return squadFromTeams(fallback.data || []);
+  } catch {
+    return [];
+  }
 }
 
 // ── Fetch fixture scorecard ───────────────────────────────────────────────────
@@ -311,6 +329,7 @@ module.exports = {
   cdGet,
   normaliseRole,
   normaliseDismissal,
+  fetchSeriesSquad,
   fetchMatchSquad,
   fetchFixtureScorecard,
   fetchMatchInfo,

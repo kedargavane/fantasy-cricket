@@ -494,17 +494,32 @@ router.post('/matches/:id/sync-squad', async (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.id, 10);
 
-  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  const match = db.prepare(`
+    SELECT m.*, s.series_ids FROM matches m
+    LEFT JOIN seasons s ON s.id = m.season_id
+    WHERE m.id = ?
+  `).get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
 
   const externalId = match.external_match_id || match.sportmonks_fixture_id;
   if (!externalId) return res.status(400).json({ error: 'No external match ID for this match' });
 
   try {
-    const players = await cricketdata.fetchMatchSquad(externalId);
+    // fetchMatchSquad already falls back to series_squad internally
+    let players = await cricketdata.fetchMatchSquad(externalId);
+
+    // Final fallback: try first series ID from the season
+    if (!players.length) {
+      const seriesIds = JSON.parse(match.series_ids || '[]');
+      if (seriesIds.length > 0) {
+        players = await cricketdata.fetchSeriesSquad(seriesIds[0]);
+      }
+    }
+
     if (!players.length) {
       return res.json({ success: false, reason: 'Squad not yet available from CricketData' });
     }
+
     upsertSquad(matchId, players);
     return res.json({ success: true, count: players.length });
   } catch (err) {
