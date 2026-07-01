@@ -284,9 +284,11 @@ function recomputeTeamPoints(matchId) {
       }
 
       let totalPoints = 0;
+      let statsFound  = 0;
       for (const player_id of activePlayers) {
         const stats = getPlayerStats.get(matchId, player_id);
         if (!stats) continue;
+        statsFound++;
         const role = player_id === captainId ? 'captain' : player_id === vcId ? 'vice_captain' : 'normal';
         const { total } = calculateFantasyPoints(
           {
@@ -309,6 +311,7 @@ function recomputeTeamPoints(matchId) {
         );
         totalPoints += total;
       }
+      console.log('[recompute] user_team', team.id, 'total points:', totalPoints, 'players:', activePlayers.length, 'stats found:', statsFound);
       updateTeamPoints.run(totalPoints, team.id);
     }
   });
