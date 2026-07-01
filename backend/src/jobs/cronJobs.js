@@ -198,21 +198,29 @@ function startCronJobs(io) {
         }
       }
 
-      // Revert live → upcoming if match is no longer started
+      // Revert live → upcoming if CricketData doesn't show match as started
+      // Disabled: CricketData currentMatches feed has delays — revert only
+      // if match_info confirms matchStarted=false AND score is empty AND
+      // last_ball_count is 0 (i.e. match has genuinely never started on our end).
       const ourLiveMatches = db.prepare(
-        "SELECT id, sportmonks_fixture_id FROM matches WHERE status = 'live' AND sportmonks_fixture_id IS NOT NULL"
+        "SELECT id, sportmonks_fixture_id, last_ball_count FROM matches WHERE status = 'live' AND sportmonks_fixture_id IS NOT NULL"
       ).all();
 
       for (const match of ourLiveMatches) {
+        // Never revert a match that has recorded any ball — it has clearly started
+        if (match.last_ball_count > 0) continue;
+
         const fixture = liveFixtureMap.get(match.sportmonks_fixture_id);
         if (!fixture) {
-          // Not in currentMatches — double-check via match_info
           try {
             const info = await cricketdata.fetchMatchInfo(match.sportmonks_fixture_id);
-            if (!info.matchStarted && !info.matchEnded) {
-              db.prepare("UPDATE matches SET status = 'upcoming' WHERE id = ?").run(match.id);
-              console.log(`[liveDetector] Match ${match.id} reverted to upcoming`);
-              io.to(`match:${match.id}`).emit('matchDelayed', { matchId: match.id });
+            const scoreEmpty = !info.score || info.score.length === 0 ||
+              info.score.every(s => !s.r || s.r === 0);
+            if (!info.matchStarted && !info.matchEnded && scoreEmpty) {
+              // db.prepare("UPDATE matches SET status = 'upcoming' WHERE id = ?").run(match.id);
+              // console.log(`[liveDetector] Match ${match.id} reverted to upcoming`);
+              // io.to(`match:${match.id}`).emit('matchDelayed', { matchId: match.id });
+              console.log(`[liveDetector] Match ${match.id} not in feed and no score — skipping revert (feed may be delayed)`);
             }
           } catch {}
         }
