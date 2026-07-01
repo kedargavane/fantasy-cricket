@@ -105,7 +105,7 @@ function startCronJobs(io) {
         const lastSynced = match.last_synced ? new Date(match.last_synced) : null;
         const secondsSinceSync = lastSynced ? (Date.now() - lastSynced.getTime()) / 1000 : 999;
 
-        if (currentBalls > lastBalls || secondsSinceSync > 60) {
+        if (currentBalls > lastBalls || secondsSinceSync > 30) {
           console.log('[livePoller] Match', match.id, 'syncing — balls:', lastBalls, '->', currentBalls, 'seconds since sync:', Math.round(secondsSinceSync));
           matchBallCount.set(match.id, currentBalls);
           db.prepare('UPDATE matches SET last_ball_count = ? WHERE id = ?').run(currentBalls, match.id);
