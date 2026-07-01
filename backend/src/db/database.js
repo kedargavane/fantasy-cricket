@@ -485,4 +485,7 @@ function runMigrations(db) {
     db.prepare("ALTER TABLE seasons ADD COLUMN series_ids TEXT DEFAULT '[]'").run();
     console.log('[db] Migration: added series_ids to seasons');
   }
+
+  // Migration: add series_id to matches (CricketData series UUID for this match)
+  try { db.exec('ALTER TABLE matches ADD COLUMN series_id TEXT'); } catch {}
 }

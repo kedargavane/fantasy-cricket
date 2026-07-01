@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const TEAM_COLORS = {
   'AIML 11':           '#1D9E75',
@@ -77,17 +78,28 @@ function getCurrentForm(ranks, total) {
 
 export default function StatsPage() {
   const navigate = useNavigate();
+  const { seasons, activeSeason } = useAuth();
+  const [selectedSeason, setSelectedSeason] = useState(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Default to activeSeason on first load
   useEffect(() => {
-    api.get('/leaderboard/season/5/stats')
+    if (!selectedSeason && activeSeason) setSelectedSeason(activeSeason);
+  }, [activeSeason]);
+
+  useEffect(() => {
+    if (!selectedSeason) return;
+    setLoading(true);
+    setError(null);
+    api.get(`/leaderboard/season/${selectedSeason.id}/stats`)
       .then(res => setData(res.data))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedSeason]);
 
+  if (!selectedSeason && !activeSeason) return <div style={{padding:32,textAlign:'center',color:'var(--text-muted)'}}>No season selected</div>;
   if (loading) return <div style={{padding:32,textAlign:'center',color:'var(--text-muted)'}}>Loading...</div>;
   if (error)   return <div style={{padding:32,color:'red'}}>Error: {error}</div>;
   if (!data)   return <div style={{padding:32,textAlign:'center',color:'var(--text-muted)'}}>No data</div>;
@@ -110,7 +122,18 @@ export default function StatsPage() {
       {/* Header */}
       <div style={{display:'flex',alignItems:'center',gap:10,padding:'14px 16px',background:'var(--bg-surface)',borderBottom:'0.5px solid var(--border)',position:'sticky',top:0,zIndex:10}}>
         <button onClick={() => navigate(-1)} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'var(--text-secondary)',padding:0}}>‹</button>
-        <span style={{fontSize:15,fontWeight:600,color:'var(--text-primary)',flex:1}}>Season 5 Stats</span>
+        <span style={{fontSize:15,fontWeight:600,color:'var(--text-primary)',flex:1}}>Stats</span>
+        {seasons.length > 1 && (
+          <select
+            value={selectedSeason?.id || ''}
+            onChange={e => setSelectedSeason(seasons.find(s => s.id === parseInt(e.target.value)))}
+            style={{fontSize:12,padding:'3px 6px',borderRadius:6,border:'0.5px solid var(--border)',background:'var(--bg-elevated)',color:'var(--text-primary)',cursor:'pointer'}}
+          >
+            {[...seasons].sort((a,b) => b.id - a.id).map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        )}
         <span style={{fontSize:11,color:'var(--text-muted)'}}>{totalMatches} matches</span>
       </div>
 
