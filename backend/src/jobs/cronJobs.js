@@ -249,7 +249,14 @@ function startCronJobs(io) {
 
     for (const match of upcoming) {
       try {
-        const info = await cricketdata.fetchMatchInfo(match.sportmonks_fixture_id);
+        const externalId = match.sportmonks_fixture_id;
+        // Skip old Sportmonks numeric IDs — CricketData IDs are UUIDs
+        if (!externalId || !externalId.includes('-')) {
+          console.log('[xiPoller] Skipping match', match.id, '— not a CricketData UUID');
+          continue;
+        }
+
+        const info = await cricketdata.fetchMatchInfo(externalId);
         if (!info.hasSquad) continue;
 
         // Squad announced — sync it and mark all as playing XI
