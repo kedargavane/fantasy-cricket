@@ -99,6 +99,36 @@ router.patch('/seasons/:id', (req, res) => {
 });
 
 
+// ── POST /api/admin/seasons/:id/members ───────────────────────────────────────
+router.post('/seasons/:id/members', (req, res) => {
+  const db       = getDb();
+  const seasonId = parseInt(req.params.id, 10);
+  const { userId } = req.body;
+
+  if (!userId) return res.status(400).json({ error: 'userId is required' });
+
+  const season = db.prepare('SELECT id FROM seasons WHERE id = ?').get(seasonId);
+  if (!season) return res.status(404).json({ error: 'Season not found' });
+
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const existing = db.prepare(
+    'SELECT id FROM season_memberships WHERE season_id = ? AND user_id = ?'
+  ).get(seasonId, userId);
+  if (existing) return res.status(409).json({ error: 'User is already a member of this season' });
+
+  db.transaction(() => {
+    db.prepare('INSERT INTO season_memberships (season_id, user_id) VALUES (?, ?)').run(seasonId, userId);
+    db.prepare(`
+      INSERT INTO season_leaderboard (season_id, user_id, total_fantasy_points, total_units_won, net_units, matches_played, top_finishes)
+      VALUES (?, ?, 0, 0, 0, 0, 0)
+    `).run(seasonId, userId);
+  })();
+
+  return res.json({ success: true });
+});
+
 // ── POST /api/admin/seasons/:id/sync-schedule ─────────────────────────────────
 // Manually trigger auto-schedule for a specific season
 router.post('/seasons/:id/sync-schedule', async (req, res) => {
