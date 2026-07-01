@@ -4,6 +4,7 @@ const express = require('express');
 const { getDb }                  = require('../db/database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { upsertMatch, upsertSquad, recomputeTeamPoints } = require('../api/syncService');
+const cricketdata                = require('../api/cricketdata');
 const { distributePrizes }       = require('../engines/prizeEngine');
 const { sendMatchReminders }     = require('../jobs/cronJobs');
 
@@ -489,28 +490,43 @@ router.post('/matches/:id/sync-squad-from/:sourceMatchId', async (req, res) => {
 });
 
 // ── POST /api/admin/matches/:id/sync-squad ───────────────────────────────────
-// Pull squad from CricketData
 router.post('/matches/:id/sync-squad', async (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.id, 10);
 
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
-  if (!match.sportmonks_fixture_id) return res.status(400).json({ error: 'No match ID (sportmonks_fixture_id) for this match' });
+
+  const externalId = match.external_match_id || match.sportmonks_fixture_id;
+  if (!externalId) return res.status(400).json({ error: 'No external match ID for this match' });
 
   try {
-    const { syncPlayingXi } = require('../api/syncService');
-    const result = await syncPlayingXi(matchId, match.sportmonks_fixture_id);
-
-    const squad = db.prepare(`
-      SELECT p.*, ms.is_playing_xi FROM match_squads ms
-      JOIN players p ON p.id = ms.player_id WHERE ms.match_id = ?
-    `).all(matchId);
-
-    return res.json({ squad, synced: result.count });
+    const players = await cricketdata.fetchMatchSquad(externalId);
+    if (!players.length) {
+      return res.json({ success: false, reason: 'Squad not yet available from CricketData' });
+    }
+    upsertSquad(matchId, players);
+    return res.json({ success: true, count: players.length });
   } catch (err) {
-    return res.status(500).json({ error: `Sportmonks sync failed: ${err.message}` });
+    return res.status(500).json({ error: err.message });
   }
+});
+
+// ── POST /api/admin/matches/:id/seed-squad ───────────────────────────────────
+router.post('/matches/:id/seed-squad', (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const { players } = req.body;
+
+  if (!Array.isArray(players) || players.length === 0) {
+    return res.status(400).json({ error: 'players array is required' });
+  }
+
+  const match = db.prepare('SELECT id FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  upsertSquad(matchId, players);
+  return res.json({ success: true, count: players.length });
 });
 
 // ── POST /api/admin/matches/:id/stats/override ────────────────────────────────
