@@ -228,8 +228,8 @@ function startCronJobs(io) {
   // fetch the squad and mark all returned players as playing XI.
   cron.schedule('*/2 * * * *', async () => {
     const db  = getDb();
-    const now     = new Date();
-    const oneHour = new Date(now.getTime() + 60 * 60 * 1000);
+    const now            = new Date();
+    const twentyFourHours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
     const upcoming = db.prepare(`
       SELECT id, sportmonks_fixture_id, team_a, team_b
@@ -237,7 +237,7 @@ function startCronJobs(io) {
       WHERE status = 'upcoming'
       AND sportmonks_fixture_id IS NOT NULL
       AND start_time <= ?
-    `).all(oneHour.toISOString());
+    `).all(twentyFourHours.toISOString());
 
     for (const match of upcoming) {
       try {
@@ -284,14 +284,16 @@ function startCronJobs(io) {
   // ── 4. Squad sync — every hour ─────────────────────────────────────────────
   // CricketData uses match UUID directly — no season/team IDs needed.
   cron.schedule('0 * * * *', async () => {
-    const db = getDb();
+    const db            = getDb();
+    const twentyFourHours = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const matches = db.prepare(`
       SELECT m.id, m.sportmonks_fixture_id, m.team_a, m.team_b
       FROM matches m
       WHERE m.status = 'upcoming'
       AND m.sportmonks_fixture_id IS NOT NULL
+      AND m.start_time <= ?
       AND (SELECT COUNT(*) FROM match_squads ms WHERE ms.match_id = m.id) = 0
-    `).all();
+    `).all(twentyFourHours);
 
     if (matches.length === 0) return;
     console.log(`[squadSync] Syncing squads for ${matches.length} matches...`);
