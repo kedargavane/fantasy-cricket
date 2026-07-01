@@ -347,20 +347,6 @@ async function syncLiveMatch(matchId, externalMatchId) {
       return { success: false, error: 'No player stats' };
     }
 
-    // Stale data check: total balls in scorecard must not be less than what we already stored
-    const matchRow = db.prepare('SELECT last_ball_count FROM matches WHERE id = ?').get(matchId);
-    const storedBalls = matchRow?.last_ball_count || 0;
-    const scorecardBalls = (matchInfo.score || []).reduce((sum, s) => {
-      const o = parseFloat(s.o || s.overs || 0);
-      const completed = Math.floor(o);
-      const balls = Math.round((o - completed) * 10);
-      return sum + completed * 6 + balls;
-    }, 0);
-    if (storedBalls > 0 && scorecardBalls > 0 && scorecardBalls < storedBalls) {
-      console.warn(`[syncLiveMatch] Stale data detected for match ${matchId} — scorecard has ${scorecardBalls} balls, DB has ${storedBalls} — skipping upsert`);
-      return { success: false, reason: 'stale' };
-    }
-
     upsertStats(matchId, playerStats);
 
     // Give +4 to all confirmed XI players not yet in scorecard
