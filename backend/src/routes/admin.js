@@ -642,6 +642,39 @@ router.post('/matches/:id/void', (req, res) => {
   return res.json({ message: 'Match voided' });
 });
 
+// ── GET /api/admin/debug/match/:id/players ────────────────────────────────────
+// Temp: diagnose player ID mismatches between squad, stats and user teams
+router.get('/debug/match/:id/players', (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+
+  const squadPlayers = db.prepare(`
+    SELECT p.id, p.name, p.external_player_id
+    FROM players p
+    JOIN match_squads ms ON ms.player_id = p.id
+    WHERE ms.match_id = ?
+    ORDER BY p.name
+  `).all(matchId);
+
+  const statsPlayers = db.prepare(`
+    SELECT p.id, p.name, p.external_player_id, pms.runs, pms.fantasy_points
+    FROM player_match_stats pms
+    JOIN players p ON p.id = pms.player_id
+    WHERE pms.match_id = ?
+    ORDER BY pms.fantasy_points DESC
+  `).all(matchId);
+
+  const teamPlayers = db.prepare(`
+    SELECT utp.player_id, p.name, p.external_player_id, ut.user_id
+    FROM user_team_players utp
+    JOIN user_teams ut ON ut.id = utp.user_team_id
+    JOIN players p ON p.id = utp.player_id
+    WHERE ut.match_id = ?
+  `).all(matchId);
+
+  return res.json({ squadPlayers, statsPlayers, teamPlayers });
+});
+
 // ════════════════════════════════════════════════════════
 // USERS
 // ════════════════════════════════════════════════════════
