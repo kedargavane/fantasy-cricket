@@ -145,7 +145,9 @@ export default function LiveScorePage() {
         const tRes = await api.get(`/teams/match/${matchId}`);
         setMyTeam(tRes.data.team);
       } catch {}
-    } catch {}
+    } catch (e) {
+      console.error('[loadData] fetch failed:', e?.response?.status, e?.message, e?.response?.data);
+    }
     finally {
       setLoading(false);
       setIsRefreshing(false);
