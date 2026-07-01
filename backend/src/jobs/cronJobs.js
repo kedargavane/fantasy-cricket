@@ -24,7 +24,7 @@ function startCronJobs(io) {
   async function pollLiveMatches() {
     const db = getDb();
     const liveMatches = db.prepare(
-      "SELECT id, sportmonks_fixture_id FROM matches WHERE status = 'live' AND sportmonks_fixture_id IS NOT NULL"
+      "SELECT id, sportmonks_fixture_id, last_synced FROM matches WHERE status = 'live' AND sportmonks_fixture_id IS NOT NULL"
     ).all();
 
     if (liveMatches.length === 0) return;
@@ -102,8 +102,11 @@ function startCronJobs(io) {
           db.prepare('UPDATE matches SET venue_info = ? WHERE id = ?').run(info.venueInfo, match.id);
         }
 
-        if (currentBalls > lastBalls) {
-          console.log(`[livePoller] Match ${match.id}: ball ${lastBalls}→${currentBalls}, syncing...`);
+        const lastSynced = match.last_synced ? new Date(match.last_synced) : null;
+        const secondsSinceSync = lastSynced ? (Date.now() - lastSynced.getTime()) / 1000 : 999;
+
+        if (currentBalls > lastBalls || secondsSinceSync > 60) {
+          console.log('[livePoller] Match', match.id, 'syncing — balls:', lastBalls, '->', currentBalls, 'seconds since sync:', Math.round(secondsSinceSync));
           matchBallCount.set(match.id, currentBalls);
           db.prepare('UPDATE matches SET last_ball_count = ? WHERE id = ?').run(currentBalls, match.id);
 
