@@ -99,10 +99,13 @@ export default function LiveScorePage() {
   async function loadData() {
     console.log('[loadData] refresh triggered');
     try {
+      console.log('[loadData] fetching scores and leaderboard...');
       const [sRes, lRes] = await Promise.all([
         api.get(`/matches/${matchId}/scores`),
         api.get(`/matches/${matchId}/leaderboard`),
       ]);
+      console.log('[loadData] scores response:', sRes.status, sRes.data);
+      console.log('[loadData] leaderboard response:', lRes.status, lRes.data);
       const m = sRes.data.match;
       setMatch(m);
       // compareA/B also set when board loads below
@@ -110,6 +113,7 @@ export default function LiveScorePage() {
       setScores(sRes.data.scores || []);
       const lb = lRes.data.leaderboard || [];
       setBoard(lb);
+      console.log('[loadData] state updated — scores:', (sRes.data.scores || []).length, 'leaderboard:', lb.length);
       // Auto-set compare to rank #1 and #2 and load inline compare
       if (lb.length >= 2) {
         const aId = lb[0].user_id;
