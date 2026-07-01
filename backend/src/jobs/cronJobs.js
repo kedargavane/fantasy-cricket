@@ -254,7 +254,7 @@ function startCronJobs(io) {
       try {
         const externalId = match.sportmonks_fixture_id;
         // Skip old Sportmonks numeric IDs — CricketData IDs are UUIDs
-        if (!externalId || !externalId.includes('-')) {
+        if (!externalId || !String(externalId).includes('-')) {
           console.log('[xiPoller] Skipping match', match.id, '— not a CricketData UUID');
           continue;
         }
