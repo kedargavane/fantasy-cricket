@@ -53,6 +53,27 @@ export default function LiveScorePage() {
     return () => clearInterval(interval);
   }, [match?.status]);
 
+  // 30-second polling fallback in case socket misses an update
+  useEffect(() => {
+    if (!match || match.status !== 'live') return;
+    const fetchLatest = async () => {
+      try {
+        const [mRes, sRes, lRes] = await Promise.all([
+          api.get(`/matches/${matchId}`),
+          api.get(`/matches/${matchId}/scores`),
+          api.get(`/matches/${matchId}/leaderboard`),
+        ]);
+        if (mRes.data?.match) setMatch(mRes.data.match);
+        if (sRes.data?.scores) setScores(sRes.data.scores);
+        if (lRes.data?.leaderboard) setBoard(lRes.data.leaderboard);
+      } catch (e) {
+        console.error('[poll] failed:', e);
+      }
+    };
+    const interval = setInterval(fetchLatest, 30000);
+    return () => clearInterval(interval);
+  }, [match?.status, matchId]);
+
   async function loadUserTeam(userId, userName, totalPts) {
     setLoadingTeam(true);
     try {
