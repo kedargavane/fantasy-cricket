@@ -6,17 +6,9 @@ const cricketdata  = require('../api/cricketdata');
 const { syncLiveMatch, syncPlayingXi, upsertSquad, recomputeTeamPoints } = require('../api/syncService');
 
 // In-memory trackers
-const matchBallCount   = new Map();
 const matchLastStatus  = new Map();
 const matchXiNotified  = new Set();
 
-function oversToTotalBalls(overs) {
-  if (!overs) return 0;
-  const o         = parseFloat(overs);
-  const completed = Math.floor(o);
-  const balls     = Math.round((o - completed) * 10);
-  return completed * 6 + balls;
-}
 
 function startCronJobs(io) {
 
@@ -32,10 +24,6 @@ function startCronJobs(io) {
     for (const match of liveMatches) {
       try {
         const info = await cricketdata.fetchMatchInfo(match.sportmonks_fixture_id);
-
-        // Count total balls from score (info.score items have overs alias set in fetchMatchInfo)
-        const currentBalls = info.score.reduce((sum, s) => sum + oversToTotalBalls(s.overs), 0);
-        const lastBalls    = matchBallCount.get(match.id) ?? -1;
 
         // ── Innings break notification ──────────────────────────────────────
         const lastStatus = matchLastStatus.get(match.id);
@@ -76,7 +64,6 @@ function startCronJobs(io) {
           console.log(`[livePoller] Match ${match.id} truly finished, final sync...`);
           const result = await syncLiveMatch(match.id, match.sportmonks_fixture_id);
           if (result.success) {
-            matchBallCount.delete(match.id);
             io.to(`match:${match.id}`).emit('statsUpdate', {
               matchId: match.id, playersUpdated: result.playersUpdated,
               timestamp: new Date().toISOString(),
@@ -102,15 +89,9 @@ function startCronJobs(io) {
           db.prepare('UPDATE matches SET venue_info = ? WHERE id = ?').run(info.venueInfo, match.id);
         }
 
-        const lastSynced = match.last_synced ? new Date(match.last_synced) : null;
-        const secondsSinceSync = lastSynced ? (Date.now() - lastSynced.getTime()) / 1000 : 999;
-
-        if (currentBalls > lastBalls || (secondsSinceSync > 30 && currentBalls >= lastBalls)) {
-          console.log('[livePoller] Match', match.id, 'syncing — balls:', lastBalls, '->', currentBalls, 'seconds since sync:', Math.round(secondsSinceSync));
-          if (currentBalls >= lastBalls) {
-            matchBallCount.set(match.id, currentBalls);
-            db.prepare('UPDATE matches SET last_ball_count = ? WHERE id = ?').run(currentBalls, match.id);
-          }
+        // Always sync every 30 seconds — simpler and avoids stale feed issues
+        {
+          console.log('[livePoller] Match', match.id, 'syncing...');
 
           const result = await syncLiveMatch(match.id, match.sportmonks_fixture_id);
           if (result.success) {
@@ -118,29 +99,6 @@ function startCronJobs(io) {
               matchId: match.id, playersUpdated: result.playersUpdated,
               timestamp: new Date().toISOString(),
             });
-          }
-
-          // Commentary milestones (60=10ov, 120=20ov, 180=30ov)
-          const commentaryMilestones = [
-            { balls: 60,  stage: 'pp1',  overs: '10.0' },
-            { balls: 120, stage: 'inn1', overs: '20.0' },
-            { balls: 180, stage: 'pp2',  overs: '30.0' },
-          ];
-          for (const m of commentaryMilestones) {
-            if (lastBalls < m.balls && currentBalls >= m.balls) {
-              const existing = db.prepare(
-                'SELECT id FROM match_commentary WHERE match_id = ? AND stage = ?'
-              ).get(match.id, m.stage);
-              if (!existing) {
-                try {
-                  const { generateCommentary } = require('../api/commentaryService');
-                  await generateCommentary(match.id, m.stage, m.overs);
-                } catch (e) {
-                  console.error(`[commentary] Failed ${m.stage}:`, e.message);
-                }
-              }
-              break;
-            }
           }
         }
       } catch (err) {
