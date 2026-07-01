@@ -97,6 +97,7 @@ export default function LiveScorePage() {
   }
 
   async function loadData() {
+    console.log('[loadData] refresh triggered');
     try {
       const [sRes, lRes] = await Promise.all([
         api.get(`/matches/${matchId}/scores`),
