@@ -38,6 +38,7 @@ export default function LiveScorePage() {
     : BASE_TABS;
 
   const [injection, setInjection] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -98,11 +99,13 @@ export default function LiveScorePage() {
 
   async function loadData() {
     console.log('[loadData] refresh triggered');
+    setIsRefreshing(true);
     try {
       console.log('[loadData] fetching scores and leaderboard...');
+      const t = Date.now();
       const [sRes, lRes] = await Promise.all([
-        api.get(`/matches/${matchId}/scores`),
-        api.get(`/matches/${matchId}/leaderboard`),
+        api.get(`/matches/${matchId}/scores?t=${t}`),
+        api.get(`/matches/${matchId}/leaderboard?t=${t}`),
       ]);
       console.log('[loadData] scores response:', sRes.status, sRes.data);
       console.log('[loadData] leaderboard response:', lRes.status, lRes.data);
@@ -143,7 +146,10 @@ export default function LiveScorePage() {
         setMyTeam(tRes.data.team);
       } catch {}
     } catch {}
-    finally { setLoading(false); }
+    finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
   }
 
   useEffect(() => {
@@ -369,13 +375,14 @@ export default function LiveScorePage() {
         </div>
         <button
           onClick={() => { loadData(); loadCommentary(); }}
-          style={{flexShrink:0,display:'flex',alignItems:'center',gap:5,padding:'6px 10px',margin:'4px',background:'rgba(26,111,212,0.08)',border:'0.5px solid rgba(26,111,212,0.25)',borderRadius:20,color:'var(--accent-primary)',fontSize:'0.72rem',fontWeight:500,cursor:'pointer',whiteSpace:'nowrap'}}
+          disabled={isRefreshing}
+          className="refresh-btn"
         >
-          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <svg className={isRefreshing ? 'spinner' : ''} width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
             <path d="M12 7A5 5 0 1 1 9.5 2.5"/>
             <path d="M9.5 1v2.5H12"/>
           </svg>
-          Refresh
+          {isRefreshing ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
 
@@ -512,6 +519,14 @@ export default function LiveScorePage() {
       {/* Tab 1/2: Match Score */}
       {((match?.status === 'completed' && tab === 2) || (match?.status !== 'completed' && tab === 1)) && (
         <div className="ls-content">
+          <div style={{display:'flex',justifyContent:'flex-end',padding:'4px 12px 0'}}>
+            <button onClick={loadData} disabled={isRefreshing} className="refresh-btn">
+              <svg className={isRefreshing ? 'spinner' : ''} width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M12 7A5 5 0 1 1 9.5 2.5"/><path d="M9.5 1v2.5H12"/>
+              </svg>
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
           {!scorecard
             ? <div className="ls-empty">Loading scorecard...</div>
             : scorecard.length === 0

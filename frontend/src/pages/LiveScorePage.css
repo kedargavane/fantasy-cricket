@@ -89,3 +89,8 @@
 .ls-prize-net { font-size:0.875rem; font-weight:700; font-family:var(--font-mono); flex-shrink:0; min-width:44px; text-align:right; }
 .ls-net-win  { color:var(--accent-green); }
 .ls-net-loss { color:#f87171; }
+
+.refresh-btn { flex-shrink:0; display:flex; align-items:center; gap:5px; padding:6px 10px; margin:4px; background:rgba(26,111,212,0.08); border:0.5px solid rgba(26,111,212,0.25); border-radius:20px; color:var(--accent-primary); font-size:0.72rem; font-weight:500; cursor:pointer; white-space:nowrap; transition:opacity 0.15s; }
+.refresh-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.spinner { animation:spin 1s linear infinite; display:inline-block; }
+@keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
