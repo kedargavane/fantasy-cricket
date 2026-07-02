@@ -14,6 +14,7 @@ export default function AdminDashboard() {
   const [showSeriesForm, setShowSeriesForm] = useState(false);
   const [syncMsg, setSyncMsg]   = useState('');
   const [syncing, setSyncing]   = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => { loadDashboard(); }, [activeSeason?.id]);
 
@@ -35,6 +36,18 @@ export default function AdminDashboard() {
     } catch (e) {
       setSyncMsg('Squad sync failed');
     }
+  }
+
+  async function resetLeaderboard() {
+    if (!data?.season) return;
+    if (!confirm('Reset all standings to 0 for this season? Only do this if all completed matches in this season were cancelled.')) return;
+    setResetting(true);
+    try {
+      await api.post(`/admin/seasons/${data.season.id}/recompute-leaderboard`);
+      setSyncMsg('✓ Standings reset to 0');
+    } catch (err) {
+      setSyncMsg('✗ ' + (err.response?.data?.error || 'Reset failed'));
+    } finally { setResetting(false); }
   }
 
   async function triggerSync() {
@@ -121,6 +134,13 @@ export default function AdminDashboard() {
                   disabled={syncing}
                 >
                   {syncing ? 'Syncing...' : '↻ Sync Now'}
+                </button>
+                <button
+                  className="btn btn-danger btn-sm"
+                  onClick={resetLeaderboard}
+                  disabled={resetting}
+                >
+                  {resetting ? 'Resetting...' : 'Reset Standings'}
                 </button>
               </div>
             </div>
