@@ -644,18 +644,22 @@ router.post('/matches/:id/cancel', (req, res) => {
 
   const entryUnits = match.entry_units || 300;
 
-  const cancel = db.transaction(() => {
-    db.prepare("UPDATE matches SET status = 'cancelled' WHERE id = ?").run(matchId);
+  try {
+    const cancel = db.transaction(() => {
+      db.prepare("UPDATE matches SET status = 'cancelled' WHERE id = ?").run(matchId);
 
-    // Refund all participants — units_won = entry_units, net_units = 0
-    const userTeams = db.prepare('SELECT id, user_id FROM user_teams WHERE match_id = ?').all(matchId);
-    for (const ut of userTeams) {
-      db.prepare('UPDATE user_teams SET units_won = ? WHERE id = ?').run(entryUnits, ut.id);
-    }
-  });
-
-  cancel();
-  return res.json({ success: true, refunded: db.prepare('SELECT COUNT(*) as c FROM user_teams WHERE match_id = ?').get(matchId).c });
+      const userTeams = db.prepare('SELECT id, user_id FROM user_teams WHERE match_id = ?').all(matchId);
+      for (const ut of userTeams) {
+        db.prepare('UPDATE user_teams SET units_won = ? WHERE id = ?').run(entryUnits, ut.id);
+      }
+    });
+    cancel();
+    const refunded = db.prepare('SELECT COUNT(*) as c FROM user_teams WHERE match_id = ?').get(matchId).c;
+    return res.json({ success: true, refunded });
+  } catch (err) {
+    console.error('[cancelMatch] DB error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/admin/matches/:id/void ─────────────────────────────────────────
