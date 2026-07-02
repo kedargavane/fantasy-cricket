@@ -69,6 +69,17 @@ export default function AdminMatchPage() {
     }
   }
 
+  async function cancelMatch() {
+    if (!confirm('Cancel this match? All participants will be refunded their entry units.')) return;
+    try {
+      const res = await api.post(`/admin/matches/${matchId}/cancel`);
+      flash('success', `Match cancelled — ${res.data.refunded} teams refunded`);
+      loadMatch();
+    } catch (err) {
+      flash('error', err.response?.data?.error || 'Failed to cancel');
+    }
+  }
+
   if (loading) return <Spinner center />;
   if (!match)  return <div className="container mt-8 text-center">Match not found</div>;
 
@@ -217,6 +228,14 @@ export default function AdminMatchPage() {
                 >
                   Void Match (no prizes)
                 </button>
+                {['live', 'upcoming'].includes(match.status) && (
+                  <button
+                    className="btn btn-danger btn-full"
+                    onClick={cancelMatch}
+                  >
+                    Cancel Match (refund all)
+                  </button>
+                )}
               </div>
             )}
           </div>

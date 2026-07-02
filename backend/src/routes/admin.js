@@ -633,6 +633,34 @@ router.post('/matches/:id/finalise', (req, res) => {
   }
 });
 
+// ── POST /api/admin/matches/:id/cancel ───────────────────────────────────────
+// Cancels a live or upcoming match — refunds entry units to all participants
+router.post('/matches/:id/cancel', (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+
+  const match = db.prepare('SELECT m.*, mc.entry_units FROM matches m LEFT JOIN match_config mc ON mc.match_id = m.id WHERE m.id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+  if (!['live', 'upcoming'].includes(match.status)) {
+    return res.status(400).json({ error: `Cannot cancel a match with status '${match.status}'` });
+  }
+
+  const entryUnits = match.entry_units || 300;
+
+  const cancel = db.transaction(() => {
+    db.prepare("UPDATE matches SET status = 'cancelled' WHERE id = ?").run(matchId);
+
+    // Refund all participants — units_won = entry_units, net_units = 0
+    const userTeams = db.prepare('SELECT id, user_id FROM user_teams WHERE match_id = ?').all(matchId);
+    for (const ut of userTeams) {
+      db.prepare('UPDATE user_teams SET units_won = ?, net_units = 0 WHERE id = ?').run(entryUnits, ut.id);
+    }
+  });
+
+  cancel();
+  return res.json({ success: true, refunded: db.prepare('SELECT COUNT(*) as c FROM user_teams WHERE match_id = ?').get(matchId).c });
+});
+
 // ── POST /api/admin/matches/:id/void ─────────────────────────────────────────
 router.post('/matches/:id/void', (req, res) => {
   const db      = getDb();
