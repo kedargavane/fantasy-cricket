@@ -202,42 +202,44 @@ export default function AdminMatchPage() {
               />
             </div>
 
-            {match.status === 'completed' ? (
-              <div className="card text-center">
-                <span style={{fontSize:'2rem'}}>✅</span>
-                <p className="mt-2 text-green font-bold">Match finalised</p>
-                <button
-                  className="btn btn-secondary btn-sm mt-4"
-                  onClick={() => navigate(`/match/${matchId}/result`)}
-                >
-                  View Result
-                </button>
-              </div>
-            ) : (
-              <div className="flex-col gap-3">
-                <button
-                  className="btn btn-gold btn-full"
-                  onClick={finalise}
-                  disabled={match.status === 'upcoming' || xiPlayers.length < 11}
-                >
-                  🏆 Finalise Match & Distribute Prizes
-                </button>
-                <button
-                  className="btn btn-danger btn-full"
-                  onClick={voidMatch}
-                >
-                  Void Match (no prizes)
-                </button>
-                {match.status !== 'cancelled' && (
+            <div className="flex-col gap-3">
+              {match.status === 'completed' ? (
+                <div className="card text-center">
+                  <span style={{fontSize:'2rem'}}>✅</span>
+                  <p className="mt-2 text-green font-bold">Match finalised</p>
+                  <button
+                    className="btn btn-secondary btn-sm mt-4"
+                    onClick={() => navigate(`/match/${matchId}/result`)}
+                  >
+                    View Result
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    className="btn btn-gold btn-full"
+                    onClick={finalise}
+                    disabled={match.status === 'upcoming' || xiPlayers.length < 11}
+                  >
+                    🏆 Finalise Match & Distribute Prizes
+                  </button>
                   <button
                     className="btn btn-danger btn-full"
-                    onClick={cancelMatch}
+                    onClick={voidMatch}
                   >
-                    Cancel Match (refund all)
+                    Void Match (no prizes)
                   </button>
-                )}
-              </div>
-            )}
+                </>
+              )}
+              {match.status !== 'cancelled' && (
+                <button
+                  className="btn btn-danger btn-full"
+                  onClick={cancelMatch}
+                >
+                  Cancel Match (refund all)
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
