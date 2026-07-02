@@ -650,7 +650,7 @@ router.post('/matches/:id/cancel', (req, res) => {
     // Refund all participants — units_won = entry_units, net_units = 0
     const userTeams = db.prepare('SELECT id, user_id FROM user_teams WHERE match_id = ?').all(matchId);
     for (const ut of userTeams) {
-      db.prepare('UPDATE user_teams SET units_won = ?, net_units = 0 WHERE id = ?').run(entryUnits, ut.id);
+      db.prepare('UPDATE user_teams SET units_won = ? WHERE id = ?').run(entryUnits, ut.id);
     }
   });
 
