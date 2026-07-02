@@ -634,16 +634,13 @@ router.post('/matches/:id/finalise', (req, res) => {
 });
 
 // ── POST /api/admin/matches/:id/cancel ───────────────────────────────────────
-// Cancels a live or upcoming match — refunds entry units to all participants
+// Cancels a match and refunds entry units — allowed for any status (rain/abandonment)
 router.post('/matches/:id/cancel', (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.id, 10);
 
   const match = db.prepare('SELECT m.*, mc.entry_units FROM matches m LEFT JOIN match_config mc ON mc.match_id = m.id WHERE m.id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
-  if (!['live', 'upcoming'].includes(match.status)) {
-    return res.status(400).json({ error: `Cannot cancel a match with status '${match.status}'` });
-  }
 
   const entryUnits = match.entry_units || 300;
 

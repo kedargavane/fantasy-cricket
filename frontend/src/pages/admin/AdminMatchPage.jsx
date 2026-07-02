@@ -70,7 +70,7 @@ export default function AdminMatchPage() {
   }
 
   async function cancelMatch() {
-    if (!confirm('Cancel this match? All participants will be refunded their entry units.')) return;
+    if (!confirm('Are you sure? This will refund all entry units.')) return;
     try {
       const res = await api.post(`/admin/matches/${matchId}/cancel`);
       flash('success', `Match cancelled — ${res.data.refunded} teams refunded`);
@@ -228,7 +228,7 @@ export default function AdminMatchPage() {
                 >
                   Void Match (no prizes)
                 </button>
-                {['live', 'upcoming'].includes(match.status) && (
+                {match.status !== 'cancelled' && (
                   <button
                     className="btn btn-danger btn-full"
                     onClick={cancelMatch}
