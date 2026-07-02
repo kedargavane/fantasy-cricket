@@ -645,9 +645,10 @@ router.post('/matches/:id/cancel', (req, res) => {
   const entryUnits = match.entry_units || 300;
 
   try {
+    // Old DBs have CHECK (status IN ('upcoming','live','completed','abandoned')) without 'cancelled'
+    db.pragma('ignore_check_constraints = 1');
     const cancel = db.transaction(() => {
       db.prepare("UPDATE matches SET status = 'cancelled' WHERE id = ?").run(matchId);
-
       const userTeams = db.prepare('SELECT id, user_id FROM user_teams WHERE match_id = ?').all(matchId);
       for (const ut of userTeams) {
         db.prepare('UPDATE user_teams SET units_won = ? WHERE id = ?').run(entryUnits, ut.id);
@@ -659,6 +660,8 @@ router.post('/matches/:id/cancel', (req, res) => {
   } catch (err) {
     console.error('[cancelMatch] DB error:', err.message);
     return res.status(500).json({ error: err.message });
+  } finally {
+    db.pragma('ignore_check_constraints = 0');
   }
 });
 

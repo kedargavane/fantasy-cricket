@@ -488,4 +488,22 @@ function runMigrations(db) {
 
   // Migration: add series_id to matches (CricketData series UUID for this match)
   try { db.exec('ALTER TABLE matches ADD COLUMN series_id TEXT'); } catch {}
+
+  // Migration: add 'cancelled' to matches.status CHECK constraint (old DBs missing it)
+  try {
+    const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='matches'").get();
+    if (row && row.sql && !row.sql.includes("'cancelled'")) {
+      db.pragma('writable_schema = 1');
+      db.prepare(`
+        UPDATE sqlite_master
+        SET sql = REPLACE(sql, "'abandoned')", "'abandoned','cancelled')")
+        WHERE type = 'table' AND name = 'matches'
+      `).run();
+      db.pragma('writable_schema = 0');
+      console.log('[db] Migration: patched matches.status CHECK to include cancelled');
+    }
+  } catch (e) {
+    try { db.pragma('writable_schema = 0'); } catch {}
+    console.error('[db] Migration: could not patch matches CHECK constraint:', e.message);
+  }
 }
