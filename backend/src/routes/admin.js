@@ -647,13 +647,47 @@ router.post('/matches/:id/cancel', (req, res) => {
   try {
     // Old DBs have CHECK (status IN ('upcoming','live','completed','abandoned')) without 'cancelled'
     db.pragma('ignore_check_constraints = 1');
+
     const cancel = db.transaction(() => {
       db.prepare("UPDATE matches SET status = 'cancelled' WHERE id = ?").run(matchId);
+
+      // Refund entry units to every participant
       const userTeams = db.prepare('SELECT id, user_id FROM user_teams WHERE match_id = ?').all(matchId);
       for (const ut of userTeams) {
         db.prepare('UPDATE user_teams SET units_won = ? WHERE id = ?').run(entryUnits, ut.id);
       }
+
+      // If match was already finalised, reverse its contribution to season_leaderboard
+      const pool = db.prepare(
+        'SELECT id FROM match_prize_pools WHERE match_id = ? AND is_finalized = 1'
+      ).get(matchId);
+      if (pool) {
+        const dists = db.prepare(`
+          SELECT pd.fantasy_points, pd.gross_units, pd.net_units, ut.user_id
+          FROM prize_distributions pd
+          JOIN user_teams ut ON ut.id = pd.user_team_id
+          WHERE pd.match_prize_pool_id = ?
+        `).all(pool.id);
+
+        for (const d of dists) {
+          db.prepare(`
+            UPDATE season_leaderboard SET
+              total_fantasy_points = MAX(0, total_fantasy_points - ?),
+              total_units_won      = MAX(0, total_units_won - ?),
+              net_units            = net_units - ?,
+              matches_played       = MAX(0, matches_played - 1),
+              top_finishes         = MAX(0, top_finishes - ?)
+            WHERE season_id = ? AND user_id = ?
+          `).run(
+            d.fantasy_points, d.gross_units, d.net_units,
+            d.gross_units > 0 ? 1 : 0,
+            match.season_id, d.user_id
+          );
+        }
+        console.log(`[cancelMatch] Reversed leaderboard for ${dists.length} users (match ${matchId})`);
+      }
     });
+
     cancel();
     const refunded = db.prepare('SELECT COUNT(*) as c FROM user_teams WHERE match_id = ?').get(matchId).c;
     return res.json({ success: true, refunded });
