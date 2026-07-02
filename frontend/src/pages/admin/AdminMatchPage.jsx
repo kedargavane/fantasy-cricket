@@ -76,7 +76,8 @@ export default function AdminMatchPage() {
       flash('success', `Match cancelled — ${res.data.refunded} teams refunded`);
       loadMatch();
     } catch (err) {
-      flash('error', err.response?.data?.error || 'Failed to cancel');
+      console.error('[cancelMatch] error:', err.response?.status, err.response?.data, err.message);
+      flash('error', err.response?.data?.error || err.message || 'Failed to cancel');
     }
   }
 
