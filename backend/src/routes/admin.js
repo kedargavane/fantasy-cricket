@@ -657,35 +657,8 @@ router.post('/matches/:id/cancel', (req, res) => {
         db.prepare('UPDATE user_teams SET units_won = ? WHERE id = ?').run(entryUnits, ut.id);
       }
 
-      // If match was already finalised, reverse its contribution to season_leaderboard
-      const pool = db.prepare(
-        'SELECT id FROM match_prize_pools WHERE match_id = ? AND is_finalized = 1'
-      ).get(matchId);
-      if (pool) {
-        const dists = db.prepare(`
-          SELECT pd.fantasy_points, pd.gross_units, pd.net_units, ut.user_id
-          FROM prize_distributions pd
-          JOIN user_teams ut ON ut.id = pd.user_team_id
-          WHERE pd.match_prize_pool_id = ?
-        `).all(pool.id);
-
-        for (const d of dists) {
-          db.prepare(`
-            UPDATE season_leaderboard SET
-              total_fantasy_points = MAX(0, total_fantasy_points - ?),
-              total_units_won      = MAX(0, total_units_won - ?),
-              net_units            = net_units - ?,
-              matches_played       = MAX(0, matches_played - 1),
-              top_finishes         = MAX(0, top_finishes - ?)
-            WHERE season_id = ? AND user_id = ?
-          `).run(
-            d.fantasy_points, d.gross_units, d.net_units,
-            d.gross_units > 0 ? 1 : 0,
-            match.season_id, d.user_id
-          );
-        }
-        console.log(`[cancelMatch] Reversed leaderboard for ${dists.length} users (match ${matchId})`);
-      }
+      // Recompute season leaderboard from scratch (excluding this now-cancelled match)
+      recomputeSeasonLeaderboard(db, match.season_id);
     });
 
     cancel();
@@ -698,6 +671,72 @@ router.post('/matches/:id/cancel', (req, res) => {
     db.pragma('ignore_check_constraints = 0');
   }
 });
+
+// ── POST /api/admin/seasons/:id/recompute-leaderboard ────────────────────────
+router.post('/seasons/:id/recompute-leaderboard', (req, res) => {
+  const db       = getDb();
+  const seasonId = parseInt(req.params.id, 10);
+  try {
+    recomputeSeasonLeaderboard(db, seasonId);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[recomputeLeaderboard] error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+function recomputeSeasonLeaderboard(db, seasonId) {
+  // Zero out everyone in the season
+  db.prepare(`
+    UPDATE season_leaderboard SET
+      total_fantasy_points = 0,
+      total_units_won      = 0,
+      net_units            = 0,
+      matches_played       = 0,
+      top_finishes         = 0,
+      updated_at           = datetime('now')
+    WHERE season_id = ?
+  `).run(seasonId);
+
+  // Re-add contributions from every finalised non-cancelled match in this season
+  const pools = db.prepare(`
+    SELECT mpp.id as pool_id
+    FROM match_prize_pools mpp
+    JOIN matches m ON m.id = mpp.match_id
+    WHERE m.season_id = ? AND mpp.is_finalized = 1 AND m.status != 'cancelled'
+  `).all(seasonId);
+
+  const upsert = db.prepare(`
+    INSERT INTO season_leaderboard (season_id, user_id, total_fantasy_points, total_units_won, net_units, matches_played, top_finishes, updated_at)
+    VALUES (?, ?, ?, ?, ?, 1, ?, datetime('now'))
+    ON CONFLICT(season_id, user_id) DO UPDATE SET
+      total_fantasy_points = total_fantasy_points + excluded.total_fantasy_points,
+      total_units_won      = total_units_won      + excluded.total_units_won,
+      net_units            = net_units            + excluded.net_units,
+      matches_played       = matches_played       + 1,
+      top_finishes         = top_finishes         + excluded.top_finishes,
+      updated_at           = datetime('now')
+  `);
+
+  for (const { pool_id } of pools) {
+    const dists = db.prepare(`
+      SELECT pd.fantasy_points, pd.gross_units, pd.net_units, ut.user_id
+      FROM prize_distributions pd
+      JOIN user_teams ut ON ut.id = pd.user_team_id
+      WHERE pd.match_prize_pool_id = ?
+    `).all(pool_id);
+
+    for (const d of dists) {
+      upsert.run(
+        seasonId, d.user_id,
+        d.fantasy_points, d.gross_units, d.net_units,
+        d.gross_units > 0 ? 1 : 0
+      );
+    }
+  }
+
+  console.log(`[recomputeLeaderboard] Season ${seasonId}: replayed ${pools.length} matches`);
+}
 
 // ── POST /api/admin/matches/:id/void ─────────────────────────────────────────
 router.post('/matches/:id/void', (req, res) => {
