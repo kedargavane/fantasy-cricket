@@ -47,16 +47,23 @@ function startCronJobs(io) {
 
             console.log('[livePoller] ESPN sync match', match.id, '- players:', playerStats.length);
 
-            if (matchInfo.trulyFinished) {
-              db.prepare("UPDATE matches SET status = 'completed' WHERE id = ?").run(match.id);
-              const { finaliseMatch } = require('../api/matchService');
-              finaliseMatch(match.id);
-            }
-
             io.to(`match:${match.id}`).emit('statsUpdate', {
               matchId: match.id, playersUpdated: playerStats.length,
               timestamp: new Date().toISOString(),
             });
+
+            if (matchInfo.trulyFinished) {
+              db.prepare("UPDATE matches SET status = 'completed' WHERE id = ?").run(match.id);
+              io.to(`match:${match.id}`).emit('matchCompleted', { matchId: match.id });
+
+              try {
+                const { finaliseMatch } = require('../api/matchService');
+                finaliseMatch(match.id);
+                console.log(`[livePoller] Match ${match.id} auto-finalised (ESPN)`);
+              } catch (e) {
+                console.error(`[livePoller] Auto-finalise failed for match ${match.id}:`, e.message);
+              }
+            }
           } catch (espnErr) {
             console.error('[livePoller] ESPN error match', match.id, ':', espnErr.message);
           }
