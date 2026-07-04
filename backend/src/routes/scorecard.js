@@ -29,13 +29,20 @@ function buildScorecard(matchId, { skipCache = false } = {}) {
     ORDER BY pms.scoreboard, pms.sort_order
   `).all(matchId);
 
-  // Group by innings
+  // Group by innings.
+  //
+  // player_match_stats has ONE row per player per match — an all-rounder who
+  // bats in one innings and bowls in the other has both sets of figures on
+  // the same row, but only a single `scoreboard` label (batting always
+  // overwrites it last in buildPlayerStatsFromScorecard). So a row's own
+  // scoreboard is reliable for BATTING, but not for bowling — a bowler's
+  // figures must be attributed to whichever innings has the opposing team
+  // batting, not to their own row's scoreboard label.
   const innings = {};
-  for (const s of stats) {
-    const inn = s.scoreboard || 'I1';
-    if (!innings[inn]) innings[inn] = {
-      scoreboard:  inn,
-      inningNum:   parseInt(inn.replace(/\D/g, ''), 10) || 1,
+  function ensureGroup(label) {
+    if (!innings[label]) innings[label] = {
+      scoreboard:  label,
+      inningNum:   parseInt(label.replace(/\D/g, ''), 10) || 1,
       battingTeam: null,
       bowlingTeam: null,
       batting:     [],
@@ -44,9 +51,13 @@ function buildScorecard(matchId, { skipCache = false } = {}) {
       wickets:     0,
       overs:       0,
     };
-    const group = innings[inn];
+    return innings[label];
+  }
 
+  // Pass 1: batting
+  for (const s of stats) {
     if (s.balls_faced > 0 || s.dismissal_type !== 'dnb') {
+      const group = ensureGroup(s.scoreboard || 'I1');
       if (!group.battingTeam) group.battingTeam = s.match_team;
       group.batting.push({
         player_id: s.player_id,
@@ -65,8 +76,14 @@ function buildScorecard(matchId, { skipCache = false } = {}) {
       group.runs += s.runs || 0;
       if (!NOT_OUT_TYPES.includes(s.dismissal_type)) group.wickets += 1;
     }
+  }
 
+  // Pass 2: bowling — attribute to the innings where the OPPOSING team bats
+  const battingGroups = Object.values(innings);
+  for (const s of stats) {
     if (s.overs_bowled > 0) {
+      let group = battingGroups.find(g => g.battingTeam && g.battingTeam !== s.match_team);
+      if (!group) group = ensureGroup(s.scoreboard || 'I1');
       if (!group.bowlingTeam) group.bowlingTeam = s.match_team;
       group.bowling.push({
         player_id: s.player_id,
