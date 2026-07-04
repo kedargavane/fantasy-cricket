@@ -13,15 +13,21 @@ const matchXiNotified  = new Set();
 function startCronJobs(io) {
 
   // ── 1. Live poller — every 30 seconds ──────────────────────────────────────
+  // Only polls when there's a live match or one starting within 30 minutes.
   async function pollLiveMatches() {
     const db = getDb();
-    const liveMatches = db.prepare(
-      "SELECT id, sportmonks_fixture_id, last_synced FROM matches WHERE status = 'live' AND sportmonks_fixture_id IS NOT NULL"
-    ).all();
+    const now     = new Date();
+    const in30min = new Date(now.getTime() + 30 * 60 * 1000);
 
-    if (liveMatches.length === 0) return;
+    const activeMatches = db.prepare(`
+      SELECT id, sportmonks_fixture_id FROM matches
+      WHERE (status = 'live' AND sportmonks_fixture_id LIKE '%-%')
+      OR (status = 'upcoming' AND start_time <= ? AND sportmonks_fixture_id LIKE '%-%')
+    `).all(in30min.toISOString());
 
-    for (const match of liveMatches) {
+    if (activeMatches.length === 0) return; // Nothing to poll
+
+    for (const match of activeMatches) {
       try {
         const info = await cricketdata.fetchMatchInfo(match.sportmonks_fixture_id);
 
@@ -118,6 +124,17 @@ function startCronJobs(io) {
     const now        = new Date();
     const twoHours   = new Date(now.getTime() + 2 * 60 * 60 * 1000);
     const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+
+    // Only run full detection if there's an upcoming match within 2 hours of start_time
+    const upcomingSoon = db.prepare(`
+      SELECT 1 FROM matches
+      WHERE status = 'upcoming'
+      AND start_time <= ?
+      AND sportmonks_fixture_id LIKE '%-%'
+      LIMIT 1
+    `).get(twoHours.toISOString());
+
+    if (!upcomingSoon) return; // Nothing to detect
 
     // Promote upcoming → live by polling match_info directly
     const candidates = db.prepare(`

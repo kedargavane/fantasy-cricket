@@ -92,10 +92,11 @@ async function fetchMatchSquad(matchId) {
 }
 
 // ── Fetch fixture scorecard ───────────────────────────────────────────────────
-// GET /match_scorecard?id=matchId
+// GET /match_info?id=matchId — returns scorecard, score, tossWinner and matchWinner
+// in a single call when fantasyEnabled is true.
 // Returns { matchInfo, playerStats } — identical shape to sportmonks.fetchFixtureScorecard
 async function fetchFixtureScorecard(matchId) {
-  const data = await cdGet('match_scorecard', { id: matchId });
+  const data = await cdGet('match_info', { id: matchId });
   const d    = data.data || {};
 
   const teamA = d.teams?.[0] || '';
@@ -108,8 +109,9 @@ async function fetchFixtureScorecard(matchId) {
     status:          d.matchEnded ? 'completed' : d.matchStarted ? 'live' : 'upcoming',
     teamA,
     teamB,
-    tossWinner: d.tossWinner || null,
-    tossChoice: d.tossChoice || null,
+    tossWinner:  d.tossWinner  || null,
+    tossChoice:  d.tossChoice  || null,
+    matchWinner: d.matchWinner || null,
     score: (d.score || []).map(s => {
       // "India Inning 1" → "India" for teamName
       const teamName = s.inning
