@@ -230,6 +230,39 @@ router.post('/matches/:id/sync-scorecard', async (req, res) => {
   }
 });
 
+// ── POST /api/admin/matches/:id/manual-scorecard ─────────────────────────────
+// Manually enter a scorecard when CricketData has no data for this match
+// (local leagues, LLC, etc). Same shape as CricketData's scorecard array.
+router.post('/matches/:id/manual-scorecard', (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const { innings } = req.body;
+
+  if (!Array.isArray(innings) || innings.length === 0) {
+    return res.status(400).json({ error: 'innings array is required' });
+  }
+
+  const match = db.prepare('SELECT team_a, team_b FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  try {
+    const { upsertStats, recomputeTeamPoints } = require('../api/syncService');
+
+    const playerStats = cricketdata.buildPlayerStatsFromScorecard(innings, match.team_a, match.team_b);
+    if (playerStats.length === 0) {
+      return res.json({ success: true, playersUpdated: 0 });
+    }
+
+    upsertStats(matchId, playerStats);
+    recomputeTeamPoints(matchId);
+
+    return res.json({ success: true, playersUpdated: playerStats.length });
+  } catch (err) {
+    console.error('[manual-scorecard]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/admin/matches/:id/process-swaps ────────────────────────────────
 // Force re-process auto-swaps for all teams in a match
 // Resets swap_processed_at so swaps run again with current XI data

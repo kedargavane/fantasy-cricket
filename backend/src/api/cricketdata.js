@@ -121,6 +121,13 @@ async function fetchFixtureScorecard(matchId) {
     }),
   };
 
+  return { matchInfo, playerStats: buildPlayerStatsFromScorecard(d.scorecard, teamA, teamB) };
+}
+
+// ── Build player stats from a CricketData scorecard[] array ───────────────────
+// scorecard: [{ inning, batting: [], bowling: [], catching: [] }]
+// Shared by fetchFixtureScorecard and admin's manual-scorecard entry route.
+function buildPlayerStatsFromScorecard(scorecard, teamA, teamB) {
   // Build player stats map keyed by externalPlayerId
   const statsMap = {};
 
@@ -155,8 +162,8 @@ async function fetchFixtureScorecard(matchId) {
     return statsMap[pid];
   }
 
-  for (let innIdx = 0; innIdx < (d.scorecard || []).length; innIdx++) {
-    const inn      = d.scorecard[innIdx];
+  for (let innIdx = 0; innIdx < (scorecard || []).length; innIdx++) {
+    const inn      = scorecard[innIdx];
     const innLabel = `I${innIdx + 1}`;
     const innName  = (inn.inning || '').toLowerCase();
 
@@ -252,7 +259,7 @@ async function fetchFixtureScorecard(matchId) {
     }
   }
 
-  return { matchInfo, playerStats: Object.values(statsMap) };
+  return Object.values(statsMap);
 }
 
 // ── Fetch match info (lightweight status check) ───────────────────────────────
@@ -334,6 +341,7 @@ module.exports = {
   fetchSeriesSquad,
   fetchMatchSquad,
   fetchFixtureScorecard,
+  buildPlayerStatsFromScorecard,
   fetchMatchInfo,
   fetchLivescores,
   fetchSeriesMatches,
