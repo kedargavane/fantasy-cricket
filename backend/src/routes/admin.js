@@ -248,6 +248,12 @@ router.post('/matches/:id/manual-scorecard', (req, res) => {
   try {
     const { upsertStats, recomputeTeamPoints } = require('../api/syncService');
 
+    // Cache the display-shaped innings so the "Match Score" tab (served from
+    // scorecard_json when CricketData has no data for this match) shows it too
+    const displayInnings = cricketdata.buildDisplayInnings(innings, match.team_a, match.team_b);
+    db.prepare('UPDATE matches SET scorecard_json = ? WHERE id = ?')
+      .run(JSON.stringify(displayInnings), matchId);
+
     const playerStats = cricketdata.buildPlayerStatsFromScorecard(innings, match.team_a, match.team_b);
     if (playerStats.length === 0) {
       return res.json({ success: true, playersUpdated: 0 });

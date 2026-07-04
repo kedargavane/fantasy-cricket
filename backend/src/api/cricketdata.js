@@ -262,6 +262,69 @@ function buildPlayerStatsFromScorecard(scorecard, teamA, teamB) {
   return Object.values(statsMap);
 }
 
+// ── Build display-shaped innings from a CricketData scorecard[] array ────────
+// scoreArr: optional top-level score[] (from d.score). When absent (manual
+// scorecards have none), the per-innings totals are derived from the
+// batting/bowling entries themselves.
+// Shared by GET /api/scorecard/:matchId and admin's manual-scorecard route.
+function buildDisplayInnings(scorecard, teamA, teamB, scoreArr = []) {
+  return (scorecard || []).map((inn, idx) => {
+    const innName     = inn.inning || '';
+    const battingTeam = innName.toLowerCase().includes(teamA.toLowerCase()) ? teamA : teamB;
+    const bowlingTeam = battingTeam === teamA ? teamB : teamA;
+
+    const batting = (inn.batting || []).map((b, si) => ({
+      name:      b.batsman?.name || '',
+      runs:      b.r    ?? 0,
+      balls:     b.b    ?? 0,
+      fours:     b['4s'] ?? 0,
+      sixes:     b['6s'] ?? 0,
+      sr:        b.sr   || '0.00',
+      dismissal: b['dismissal-text'] || 'not out',
+      sort:      si,
+    }));
+
+    const bowling = (inn.bowling || []).map((b, si) => ({
+      name:    b.bowler?.name || '',
+      overs:   b.o  || '0',
+      maidens: b.m  ?? 0,
+      runs:    b.r  ?? 0,
+      wickets: b.w  ?? 0,
+      economy: b.eco || '0.00',
+      wides:   b.wd ?? 0,
+      noBalls: b.nb ?? 0,
+      sort:    si,
+    }));
+
+    // Score for this inning: prefer the top-level score array; fall back to
+    // deriving totals from the batting/bowling entries (manual scorecards
+    // have no top-level score array).
+    let score = (scoreArr || []).find(s =>
+      (s.inning || '').toLowerCase().includes(battingTeam.toLowerCase())
+      && String(s.inning).match(/\d+/)?.[0] === String(idx + 1)
+    ) || (scoreArr || [])[idx] || null;
+
+    if (!score) {
+      const runs    = (inn.batting || []).reduce((sum, b) => sum + parseInt(b.r || 0, 10), 0);
+      const wickets = (inn.batting || []).filter(b =>
+        normaliseDismissal(b['dismissal-text'] || b.dismissal || '') !== 'notout'
+      ).length;
+      const overs   = (inn.bowling || []).reduce((sum, b) => sum + parseFloat(b.o || 0), 0);
+      score = { r: runs, w: wickets, o: Math.round(overs * 10) / 10 };
+    }
+
+    return {
+      inningNum:   idx + 1,
+      inning:      innName,
+      battingTeam,
+      bowlingTeam,
+      score:       score ? { r: score.r, w: score.w, o: score.o } : null,
+      batting,
+      bowling,
+    };
+  });
+}
+
 // ── Fetch match info (lightweight status check) ───────────────────────────────
 // Equivalent to sportmonks.fetchFixtureInfo
 async function fetchMatchInfo(matchId) {
@@ -342,6 +405,7 @@ module.exports = {
   fetchMatchSquad,
   fetchFixtureScorecard,
   buildPlayerStatsFromScorecard,
+  buildDisplayInnings,
   fetchMatchInfo,
   fetchLivescores,
   fetchSeriesMatches,
