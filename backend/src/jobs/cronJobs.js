@@ -111,85 +111,86 @@ function startCronJobs(io) {
   console.log('[cron] Live poller running every 30s via setInterval');
 
   // ── 2. Live match detector — every minute ──────────────────────────────────
-  // Promotes upcoming→live when CricketData reports matchStarted.
-  // Reverts live→upcoming if match is no longer in currentMatches and hasn't started.
+  // Polls match_info directly for upcoming matches within ±2h of start time.
+  // Avoids relying on fetchLivescores() currentMatches feed (has delays).
   cron.schedule('* * * * *', async () => {
     const db = getDb();
-    try {
-      const liveFixtures   = await cricketdata.fetchLivescores();
-      // Key: CricketData UUID (stored in sportmonks_fixture_id column)
-      const liveFixtureMap = new Map(liveFixtures.map(f => [f.externalMatchId, f]));
+    const now        = new Date();
+    const twoHours   = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
 
-      // Promote upcoming → live
-      for (const [externalMatchId, fixture] of liveFixtureMap) {
-        if (!fixture.matchStarted) continue;
-        const match = db.prepare(
-          "SELECT id FROM matches WHERE sportmonks_fixture_id = ? AND status = 'upcoming'"
-        ).get(externalMatchId);
-        if (match) {
-          db.prepare("UPDATE matches SET status = 'live', went_live_at = datetime('now') WHERE id = ?").run(match.id);
-          console.log(`[liveDetector] Match ${match.id} (${externalMatchId}) is now live`);
+    // Promote upcoming → live by polling match_info directly
+    const candidates = db.prepare(`
+      SELECT id, sportmonks_fixture_id
+      FROM matches
+      WHERE status = 'upcoming'
+      AND start_time <= ?
+      AND start_time >= ?
+      AND sportmonks_fixture_id LIKE '%-%'
+    `).all(twoHours.toISOString(), twoHoursAgo.toISOString());
+
+    for (const match of candidates) {
+      try {
+        const info = await cricketdata.fetchMatchInfo(match.sportmonks_fixture_id);
+        const hasScore = info.score && info.score.length > 0 && info.score[0].r > 0;
+
+        if (info.matchStarted || hasScore) {
+          db.prepare("UPDATE matches SET status = 'live', went_live_at = datetime('now') WHERE id = ?")
+            .run(match.id);
+          console.log('[liveDetector] Match', match.id, 'is now live');
           io.to(`match:${match.id}`).emit('matchStarted', { matchId: match.id });
+
           try {
             const { processAutoSwaps } = require('../engines/swapEngine');
             const result = processAutoSwaps(match.id);
             recomputeTeamPoints(match.id);
             console.log(`[liveDetector] Swaps processed for match ${match.id}: ${result.teamsProcessed} teams`);
           } catch (e) {
-            console.error(`[liveDetector] Swap error match ${match.id}:`, e.message);
+            console.error('[liveDetector] swap error:', e.message);
           }
         }
+      } catch (err) {
+        console.error('[liveDetector] match', match.id, 'error:', err.message);
       }
+    }
 
-      // Generate 'locked' commentary 2 min after match went live
-      const recentlyLocked = db.prepare(`
-        SELECT m.id FROM matches m
-        WHERE m.status = 'live'
-          AND m.went_live_at IS NOT NULL
-          AND (strftime('%s','now') - strftime('%s', m.went_live_at)) >= 120
-          AND NOT EXISTS (
-            SELECT 1 FROM match_commentary mc
-            WHERE mc.match_id = m.id AND mc.stage = 'locked'
-          )
-      `).all();
-      for (const m of recentlyLocked) {
-        try {
-          const { generateCommentary } = require('../api/commentaryService');
-          await generateCommentary(m.id, 'locked', '0.0');
-        } catch (e) {
-          console.error(`[commentary] locked stage failed for match ${m.id}:`, e.message);
+    // Generate 'locked' commentary 2 min after match went live
+    const recentlyLocked = db.prepare(`
+      SELECT m.id FROM matches m
+      WHERE m.status = 'live'
+        AND m.went_live_at IS NOT NULL
+        AND (strftime('%s','now') - strftime('%s', m.went_live_at)) >= 120
+        AND NOT EXISTS (
+          SELECT 1 FROM match_commentary mc
+          WHERE mc.match_id = m.id AND mc.stage = 'locked'
+        )
+    `).all();
+    for (const m of recentlyLocked) {
+      try {
+        const { generateCommentary } = require('../api/commentaryService');
+        await generateCommentary(m.id, 'locked', '0.0');
+      } catch (e) {
+        console.error(`[commentary] locked stage failed for match ${m.id}:`, e.message);
+      }
+    }
+
+    // Revert live → upcoming if match_info confirms not started and no score
+    const ourLiveMatches = db.prepare(
+      "SELECT id, sportmonks_fixture_id FROM matches WHERE status = 'live' AND sportmonks_fixture_id LIKE '%-%'"
+    ).all();
+
+    for (const match of ourLiveMatches) {
+      try {
+        const info = await cricketdata.fetchMatchInfo(match.sportmonks_fixture_id);
+        const hasScore = info.score && info.score.length > 0;
+        const lastBalls = db.prepare('SELECT last_ball_count FROM matches WHERE id = ?').get(match.id);
+        if (!info.matchStarted && !hasScore && lastBalls.last_ball_count === 0) {
+          db.prepare("UPDATE matches SET status = 'upcoming' WHERE id = ?").run(match.id);
+          console.log('[liveDetector] Match', match.id, 'reverted to upcoming');
         }
+      } catch (err) {
+        console.error('[liveDetector] revert check error:', err.message);
       }
-
-      // Revert live → upcoming if CricketData doesn't show match as started
-      // Disabled: CricketData currentMatches feed has delays — revert only
-      // if match_info confirms matchStarted=false AND score is empty AND
-      // last_ball_count is 0 (i.e. match has genuinely never started on our end).
-      const ourLiveMatches = db.prepare(
-        "SELECT id, sportmonks_fixture_id, last_ball_count FROM matches WHERE status = 'live' AND sportmonks_fixture_id IS NOT NULL"
-      ).all();
-
-      for (const match of ourLiveMatches) {
-        // Never revert a match that has recorded any ball — it has clearly started
-        if (match.last_ball_count > 0) continue;
-
-        const fixture = liveFixtureMap.get(match.sportmonks_fixture_id);
-        if (!fixture) {
-          try {
-            const info = await cricketdata.fetchMatchInfo(match.sportmonks_fixture_id);
-            const scoreEmpty = !info.score || info.score.length === 0 ||
-              info.score.every(s => !s.r || s.r === 0);
-            if (!info.matchStarted && !info.matchEnded && scoreEmpty) {
-              // db.prepare("UPDATE matches SET status = 'upcoming' WHERE id = ?").run(match.id);
-              // console.log(`[liveDetector] Match ${match.id} reverted to upcoming`);
-              // io.to(`match:${match.id}`).emit('matchDelayed', { matchId: match.id });
-              console.log(`[liveDetector] Match ${match.id} not in feed and no score — skipping revert (feed may be delayed)`);
-            }
-          } catch {}
-        }
-      }
-    } catch (err) {
-      console.error('[liveDetector] error:', err.message);
     }
   });
 
