@@ -374,11 +374,14 @@ router.post('/matches', (req, res) => {
 router.patch('/matches/:id', (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.id, 10);
-  const { status, startTime, entryUnits, team_a, team_b, venue_info, localteam_id, visitorteam_id } = req.body;
+  const { status, startTime, entryUnits, team_a, team_b, venue_info, localteam_id, visitorteam_id, espnEventId } = req.body;
 
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
 
+  if (espnEventId) {
+    db.prepare('UPDATE matches SET espn_event_id = ? WHERE id = ?').run(String(espnEventId), matchId);
+  }
   if (team_a) {
     db.prepare('UPDATE matches SET team_a = ? WHERE id = ?').run(team_a, matchId);
   }
