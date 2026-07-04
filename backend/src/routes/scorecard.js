@@ -3,26 +3,92 @@
 const express        = require('express');
 const { getDb }      = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
-const cricketdata    = require('../api/cricketdata');
-const { cdGet }      = cricketdata;
 
 const router = express.Router();
 
-// Build innings array from CricketData match_info response
-// (match_info returns scorecard, score, tossWinner and matchWinner in one
-// call when fantasyEnabled is true — same endpoint cricketdata.js uses)
-async function buildScorecard(externalMatchId) {
-  const data = await cdGet('match_info', { id: externalMatchId });
-  const d    = data.data || {};
+const NOT_OUT_TYPES = ['dnb', 'notout'];
 
-  const teamA = d.teams?.[0] || '';
-  const teamB = d.teams?.[1] || '';
+// Build the innings array for a match — cache-first from scorecard_json,
+// otherwise built live from player_match_stats (whichever provider — CricketData
+// or ESPN — last synced it). Pass { skipCache: true } to force a rebuild.
+function buildScorecard(matchId, { skipCache = false } = {}) {
+  const db    = getDb();
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return null;
 
-  return cricketdata.buildDisplayInnings(d.scorecard, teamA, teamB, d.score);
+  if (!skipCache && match.scorecard_json) {
+    return JSON.parse(match.scorecard_json);
+  }
+
+  const stats = db.prepare(`
+    SELECT pms.*, p.name, p.team, p.role, p.external_player_id
+    FROM player_match_stats pms
+    JOIN players p ON p.id = pms.player_id
+    WHERE pms.match_id = ?
+    AND pms.scoreboard IS NOT NULL
+    ORDER BY pms.scoreboard, pms.sort_order
+  `).all(matchId);
+
+  // Group by innings
+  const innings = {};
+  for (const s of stats) {
+    const inn = s.scoreboard || 'I1';
+    if (!innings[inn]) innings[inn] = {
+      scoreboard:  inn,
+      inningNum:   parseInt(inn.replace(/\D/g, ''), 10) || 1,
+      battingTeam: null,
+      bowlingTeam: null,
+      batting:     [],
+      bowling:     [],
+      runs:        0,
+      wickets:     0,
+      overs:       0,
+    };
+    const group = innings[inn];
+
+    if (s.balls_faced > 0 || s.dismissal_type !== 'dnb') {
+      if (!group.battingTeam) group.battingTeam = s.match_team;
+      group.batting.push({
+        player_id: s.player_id,
+        name: s.name,
+        runs: s.runs,
+        balls: s.balls_faced,
+        fours: s.fours,
+        sixes: s.sixes,
+        strikeRate: s.balls_faced > 0 ? ((s.runs/s.balls_faced)*100).toFixed(2) : '0',
+        dismissal: s.dismissal_type,
+        bowlerName: s.bowler_name,
+        catcherName: s.catcher_name,
+        isActive: s.is_active,
+        active: !!s.is_active,
+      });
+      group.runs += s.runs || 0;
+      if (!NOT_OUT_TYPES.includes(s.dismissal_type)) group.wickets += 1;
+    }
+
+    if (s.overs_bowled > 0) {
+      if (!group.bowlingTeam) group.bowlingTeam = s.match_team;
+      group.bowling.push({
+        player_id: s.player_id,
+        name: s.name,
+        overs: s.overs_bowled,
+        maidens: s.maidens,
+        runs: s.runs_conceded,
+        wickets: s.wickets,
+        economy: s.overs_bowled > 0 ? (s.runs_conceded/s.overs_bowled).toFixed(2) : '0'
+      });
+      group.overs += s.overs_bowled || 0;
+    }
+  }
+
+  return Object.values(innings).map(g => ({
+    ...g,
+    score: { r: g.runs, w: g.wickets, o: Math.round(g.overs * 10) / 10 },
+  }));
 }
 
-// GET /api/scorecard/:matchId — serve from cache, refresh if live
-router.get('/:matchId', requireAuth, async (req, res) => {
+// GET /api/scorecard/:matchId — serve from cache, build from player_match_stats otherwise
+router.get('/:matchId', requireAuth, (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.matchId, 10);
 
@@ -34,40 +100,31 @@ router.get('/:matchId', requireAuth, async (req, res) => {
   ).get(match.season_id, req.user.id);
   if (!member) return res.status(403).json({ error: 'Access denied' });
 
-  // Serve cached scorecard for completed matches
-  if (match.status === 'completed' && match.scorecard_json) {
-    return res.json({ innings: JSON.parse(match.scorecard_json), cached: true });
-  }
-
-  const externalId = match.sportmonks_fixture_id;
-  if (!externalId) {
-    return res.status(400).json({ error: 'No match ID available' });
-  }
-
   try {
-    const innings = await buildScorecard(externalId);
-    if (match.status === 'completed') {
+    const cached  = !!match.scorecard_json;
+    const innings = buildScorecard(matchId);
+
+    // Freeze the scorecard for completed matches so we stop rebuilding it
+    if (match.status === 'completed' && !cached) {
       db.prepare('UPDATE matches SET scorecard_json = ? WHERE id = ?')
         .run(JSON.stringify(innings), matchId);
     }
-    return res.json({ innings, cached: false });
+
+    return res.json({ innings, cached });
   } catch (err) {
-    if (match.scorecard_json) {
-      return res.json({ innings: JSON.parse(match.scorecard_json), cached: true, stale: true });
-    }
     return res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/scorecard/:matchId/refresh — force refresh from CricketData
-router.post('/:matchId/refresh', requireAuth, async (req, res) => {
+// POST /api/scorecard/:matchId/refresh — force rebuild from player_match_stats
+router.post('/:matchId/refresh', requireAuth, (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.matchId, 10);
   const match   = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
 
   try {
-    const innings = await buildScorecard(match.sportmonks_fixture_id);
+    const innings = buildScorecard(matchId, { skipCache: true });
     db.prepare('UPDATE matches SET scorecard_json = ? WHERE id = ?')
       .run(JSON.stringify(innings), matchId);
     return res.json({ innings, ok: true });
