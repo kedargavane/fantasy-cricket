@@ -269,6 +269,39 @@ router.post('/matches/:id/manual-scorecard', (req, res) => {
   }
 });
 
+// ── POST /api/admin/matches/:id/sync-espn ────────────────────────────────────
+// Sync scorecard from ESPN Cricinfo (fallback for matches CricketData doesn't cover)
+router.post('/matches/:id/sync-espn', async (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const { eventId } = req.body;
+
+  if (!eventId) return res.status(400).json({ error: 'eventId required' });
+
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found' });
+
+  try {
+    const { fetchESPNScorecard } = require('../api/espncricinfo');
+    const { upsertStats, recomputeTeamPoints } = require('../api/syncService');
+
+    const { matchInfo, innings } = await fetchESPNScorecard(eventId);
+
+    const playerStats = cricketdata.buildPlayerStatsFromScorecard(innings, match.team_a, match.team_b);
+    upsertStats(matchId, playerStats);
+    recomputeTeamPoints(matchId);
+
+    // Update live score
+    db.prepare('UPDATE matches SET live_score = ?, status = ? WHERE id = ?')
+      .run(JSON.stringify(matchInfo.score), matchInfo.matchEnded ? 'completed' : 'live', matchId);
+
+    return res.json({ success: true, playersUpdated: playerStats.length });
+  } catch (err) {
+    console.error('[sync-espn]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/admin/matches/:id/process-swaps ────────────────────────────────
 // Force re-process auto-swaps for all teams in a match
 // Resets swap_processed_at so swaps run again with current XI data
