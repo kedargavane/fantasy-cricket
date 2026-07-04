@@ -150,17 +150,23 @@ function upsertStats(matchId, playerStats) {
 
   const doUpsert = db.transaction((playerStats) => {
     for (const stat of playerStats) {
-      const extId = String(stat.externalPlayerId);
+      // Some sources (ESPN) have no reliable external ID for a player — match
+      // by name only in that case, and never overwrite external_player_id
+      // with it (that would corrupt the player's real CricketData UUID).
+      const hasExtId = stat.externalPlayerId != null;
+      const extId    = hasExtId ? String(stat.externalPlayerId) : null;
 
       // Find player by external ID first
-      let player = getPlayerByExternal.get(extId);
+      let player = hasExtId ? getPlayerByExternal.get(extId) : null;
 
       // Fallback: match by name
       if (!player && stat.name) {
         const byName = getPlayerByName.get(stat.name);
         if (byName) {
-          db.prepare('UPDATE players SET external_player_id = ? WHERE id = ?')
-            .run(extId, byName.id);
+          if (hasExtId) {
+            db.prepare('UPDATE players SET external_player_id = ? WHERE id = ?')
+              .run(extId, byName.id);
+          }
           player = byName;
         }
       }
@@ -174,12 +180,15 @@ function upsertStats(matchId, playerStats) {
             WHERE ms.match_id = ? AND LOWER(p.name) = LOWER(?)
           `).get(matchId, stat.name);
           if (inSquad) {
-            db.prepare('UPDATE players SET external_player_id = ? WHERE id = ?')
-              .run(extId, inSquad.id);
+            if (hasExtId) {
+              db.prepare('UPDATE players SET external_player_id = ? WHERE id = ?')
+                .run(extId, inSquad.id);
+            }
             player = inSquad;
           }
         }
         if (!player) {
+          if (!hasExtId) continue; // no id and no name match — nothing reliable to key a new player on
           upsertPlayer.run(
             stat.name || `Player ${extId}`,
             stat.team || '',

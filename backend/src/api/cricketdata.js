@@ -131,10 +131,15 @@ function buildPlayerStatsFromScorecard(scorecard, teamA, teamB) {
   // Build player stats map keyed by externalPlayerId
   const statsMap = {};
 
+  // Some sources (ESPN) have no reliable external player ID — key those by
+  // name instead so upsertStats can match them to the existing CricketData
+  // player by name, without corrupting that player's real external_player_id.
   function ensurePlayer(pid, name, team) {
-    if (!statsMap[pid]) {
-      statsMap[pid] = {
-        externalPlayerId:    String(pid),
+    const key = pid || (name ? `name:${name.toLowerCase().trim()}` : null);
+    if (!key) return null;
+    if (!statsMap[key]) {
+      statsMap[key] = {
+        externalPlayerId:    pid ? String(pid) : null,
         name:                name || null,
         team:                team || '',
         runs:                0,
@@ -159,7 +164,7 @@ function buildPlayerStatsFromScorecard(scorecard, teamA, teamB) {
         scoreboard:          null,
       };
     }
-    return statsMap[pid];
+    return statsMap[key];
   }
 
   for (let innIdx = 0; innIdx < (scorecard || []).length; innIdx++) {
@@ -179,9 +184,10 @@ function buildPlayerStatsFromScorecard(scorecard, teamA, teamB) {
     for (let si = 0; si < (inn.batting || []).length; si++) {
       const b   = inn.batting[si];
       const pid = b.batsman?.id;
-      if (!pid) continue;
+      if (!pid && !b.batsman?.name) continue;
 
       const p = ensurePlayer(pid, b.batsman?.name, battingTeam);
+      if (!p) continue;
       p.scoreboard = innLabel;
       p.sortOrder  = si + 1;
 
@@ -234,8 +240,9 @@ function buildPlayerStatsFromScorecard(scorecard, teamA, teamB) {
     // ── Bowling ──────────────────────────────────────────────────────────────
     for (const b of (inn.bowling || [])) {
       const pid = b.bowler?.id;
-      if (!pid) continue;
+      if (!pid && !b.bowler?.name) continue;
       const p = ensurePlayer(pid, b.bowler?.name, bowlingTeam);
+      if (!p) continue;
       if (!p.scoreboard) p.scoreboard = innLabel;
 
       p.oversBowled  += parseFloat(b.o || 0);
@@ -247,8 +254,9 @@ function buildPlayerStatsFromScorecard(scorecard, teamA, teamB) {
     // ── Fielding from catching[] (authoritative when present) ─────────────────
     for (const c of (inn.catching || [])) {
       const pid = c.catcher?.id;
-      if (!pid) continue;
+      if (!pid && !c.catcher?.name) continue;
       const p = ensurePlayer(pid, c.catcher?.name, bowlingTeam);
+      if (!p) continue;
       p.catches   += parseInt(c.catch   || 0, 10);
       p.stumpings += parseInt(c.stumped || 0, 10);
       p.runOuts   += parseInt(c.runout  || 0, 10);

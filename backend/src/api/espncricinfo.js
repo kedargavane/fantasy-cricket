@@ -11,6 +11,23 @@ function getStat(stats, name) {
   return 0;
 }
 
+function hasStat(stats, name) {
+  return (stats.categories || []).some(c => c.stats?.some(s => s.name === name));
+}
+
+// Every player has both a batting-period and a bowling-period linescore
+// regardless of role (all zeros if they didn't do it) — and which period
+// comes first in the array varies by team. Identify each by the stat names
+// it carries ('batted' / 'bowled') instead of assuming a fixed index.
+function findPeriodStats(player, statName) {
+  for (const period of (player.linescores || [])) {
+    for (const ls of (period.linescores || [])) {
+      if (hasStat(ls.statistics, statName)) return ls.statistics;
+    }
+  }
+  return null;
+}
+
 function normaliseDismissal(card) {
   if (!card) return 'notout';
   const c = card.toLowerCase();
@@ -46,137 +63,100 @@ async function fetchESPNScorecard(eventId) {
     inning: c.team?.displayName + ' Inning 1'
   }));
 
-  // Build innings from rosters
-  const innings = [];
+  // Build one innings skeleton per roster/team up front, so a bowler's
+  // figures (credited to the batting team's innings) always have somewhere
+  // to land regardless of processing order.
+  const innings = (data.rosters || []).map(roster => ({
+    inning: roster.team?.displayName + ' Inning 1',
+    batting: [],
+    bowling: [],
+    catching: {},
+  }));
 
-  for (const roster of (data.rosters || [])) {
-    const teamName = roster.team?.displayName;
-    const batting = [];
-    const bowling = [];
-    const catching = {};
+  for (let ri = 0; ri < (data.rosters || []).length; ri++) {
+    const roster        = data.rosters[ri];
+    const ownInning      = innings[ri];
+    const opposingInning = innings[1 - ri]; // this team's bowling/fielding lands in the batting team's innings
+    if (!opposingInning) continue;
 
     for (const player of (roster.roster || [])) {
       const name = player.athlete?.displayName;
-      const espnId = player.athlete?.id;
+      if (!name) continue;
 
-      // Find our CricketData UUID by name match (will be resolved in syncService)
-      const ls = player.linescores?.[0]?.linescores?.[0];
-      if (!ls) continue;
+      const battingStats = findPeriodStats(player, 'batted');
+      const bowlingStats = findPeriodStats(player, 'bowled');
 
-      const stats = ls.statistics;
-      const batted = getStat(stats, 'batted');
-      const bowled = player.linescores?.[0]?.linescores?.find(l =>
-        l.statistics?.categories?.some(c => c.stats?.some(s => s.name === 'oversBowled'))
-      );
-
-      if (batted) {
-        const outDetails = stats.batting?.outDetails;
-        const dismissalCard = getStat(stats, 'dismissalCard') ||
-          stats.categories?.[0]?.stats?.find(s => s.name === 'dismissalCard')?.displayValue;
+      if (battingStats && getStat(battingStats, 'batted') === 1) {
+        const outDetails = battingStats.batting?.outDetails;
+        const dismissalCard = getStat(battingStats, 'dismissalCard') || outDetails?.dismissalCard;
 
         const fielders = outDetails?.fielders || [];
         const catcher = fielders[0]?.athlete;
         const bowlerInfo = outDetails?.bowler;
 
-        batting.push({
-          batsman: { id: espnId, name, espnId },
-          r: getStat(stats, 'runs'),
-          b: getStat(stats, 'ballsFaced'),
-          '4s': getStat(stats, 'fours'),
-          '6s': getStat(stats, 'sixes'),
-          sr: getStat(stats, 'strikeRate'),
+        ownInning.batting.push({
+          // Don't use ESPN's numeric athlete id as externalPlayerId — it
+          // isn't the CricketData UUID our players are keyed on. Name-only
+          // lets syncService match this to the existing player instead.
+          batsman: { id: null, name },
+          r: getStat(battingStats, 'runs'),
+          b: getStat(battingStats, 'ballsFaced'),
+          '4s': getStat(battingStats, 'fours'),
+          '6s': getStat(battingStats, 'sixes'),
+          sr: getStat(battingStats, 'strikeRate'),
           dismissal: normaliseDismissal(dismissalCard),
           'dismissal-text': outDetails?.shortText || '',
-          bowler: bowlerInfo ? {
-            id: bowlerInfo.id,
-            name: bowlerInfo.displayName
-          } : null,
+          bowler: bowlerInfo ? { id: null, name: bowlerInfo.displayName } : null,
           catcher: catcher ? {
-            id: catcher.id,
+            id: null,
             name: catcher.displayName,
             isKeeper: fielders[0]?.isKeeper === 1
           } : null,
-          battingPosition: getStat(stats, 'battingPosition')
+          battingPosition: getStat(battingStats, 'battingPosition')
         });
 
-        // Build catching summary
+        // Build catching summary, keyed by fielder name (no ESPN id). This
+        // belongs in ownInning (same object as the dismissed batsman's entry)
+        // — cricketdata.js derives the fielding team from that innings' own
+        // label, not from the fielder's actual team.
         if (catcher) {
-          const key = catcher.id;
-          if (!catching[key]) catching[key] = {
-            catcher: { id: catcher.id, name: catcher.displayName },
+          const key = catcher.displayName;
+          if (!ownInning.catching[key]) ownInning.catching[key] = {
+            catcher: { id: null, name: catcher.displayName },
             catch: 0, stumped: 0, runout: 0
           };
           const d = normaliseDismissal(dismissalCard);
-          if (d === 'stumped') catching[key].stumped++;
-          else if (d === 'caught') catching[key].catch++;
-          else if (d === 'runout') catching[key].runout++;
+          if (d === 'stumped') ownInning.catching[key].stumped++;
+          else if (d === 'caught') ownInning.catching[key].catch++;
+          else if (d === 'runout') ownInning.catching[key].runout++;
         }
       }
-    }
 
-    // Get bowling from leaders or opposite team roster
-    // We'll get bowling from the other team's roster
-    innings.push({
-      inning: teamName + ' Inning 1',
-      batting: batting.sort((a,b) => a.battingPosition - b.battingPosition),
-      bowling: [], // filled below
-      catching: Object.values(catching)
-    });
-  }
-
-  // Get bowling figures from leaders
-  for (const leader of (data.leaders || [])) {
-    const teamName = leader.team?.displayName;
-    // Find opposite innings
-    const inn = innings.find(i => !i.inning.includes(teamName));
-    if (!inn) continue;
-
-    const wicketLeaders = leader.linescores?.[0]?.leaders?.find(l => l.name === 'wickets');
-    // This only gives top bowlers, not all — we'll need full bowling from roster
-  }
-
-  // Better: get bowling from rosters using bowling stats
-  for (let ri = 0; ri < (data.rosters||[]).length; ri++) {
-    const roster = data.rosters[ri];
-    const oppositeInn = innings[1 - ri]; // opposite innings gets this team's bowling
-    if (!oppositeInn) continue;
-
-    const bowling = [];
-    for (const player of roster.roster || []) {
-      const name = player.athlete?.displayName;
-      const espnId = player.athlete?.id;
-
-      // Check all linescores periods for bowling stats
-      for (const period of (player.linescores || [])) {
-        for (const ls of (period.linescores || [])) {
-          const hasBowling = ls.statistics?.categories?.some(c =>
-            c.stats?.some(s => s.name === 'oversBowled')
-          );
-          if (hasBowling) {
-            const stats = ls.statistics;
-            const getBS = (n) => {
-              for (const cat of stats.categories||[]) {
-                const s = cat.stats?.find(s => s.name === n);
-                if (s) return s.value;
-              }
-              return 0;
-            };
-            bowling.push({
-              bowler: { id: espnId, name, espnId },
-              o: getBS('oversBowled'),
-              m: getBS('maidens'),
-              r: getBS('runsConceded'),
-              w: getBS('wickets'),
-              nb: getBS('noBalls'),
-              wd: getBS('wides'),
-              eco: getBS('economy')
-            });
-          }
-        }
+      // ESPN's bowling stat names differ from what we assumed: 'overs' (not
+      // oversBowled), 'conceded' (not runsConceded), 'economyRate' (not
+      // economy), 'noballs' (not noBalls). 'bowled' is the did-they-bowl flag,
+      // mirroring 'batted' for the batting period.
+      if (bowlingStats && getStat(bowlingStats, 'bowled') === 1) {
+        opposingInning.bowling.push({
+          bowler: { id: null, name },
+          o: getStat(bowlingStats, 'overs'),
+          m: getStat(bowlingStats, 'maidens'),
+          r: getStat(bowlingStats, 'conceded'),
+          w: getStat(bowlingStats, 'wickets'),
+          nb: getStat(bowlingStats, 'noballs'),
+          wd: getStat(bowlingStats, 'wides'),
+          eco: getStat(bowlingStats, 'economyRate')
+        });
       }
     }
-    if (bowling.length > 0) oppositeInn.bowling = bowling;
   }
+
+  const finalInnings = innings.map(inn => ({
+    inning: inn.inning,
+    batting: inn.batting.sort((a, b) => a.battingPosition - b.battingPosition),
+    bowling: inn.bowling,
+    catching: Object.values(inn.catching),
+  }));
 
   return {
     matchInfo: {
@@ -189,7 +169,7 @@ async function fetchESPNScorecard(eventId) {
       venueInfo: null,
       matchWinner: null
     },
-    innings
+    innings: finalInnings
   };
 }
 
