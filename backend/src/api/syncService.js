@@ -159,32 +159,37 @@ function upsertStats(matchId, playerStats) {
       // Find player by external ID first
       let player = hasExtId ? getPlayerByExternal.get(extId) : null;
 
-      // Fallback: match by name
+      // Fallback: match by name, but scoped to this match's squad first — the
+      // players table spans years of history (old Sportmonks/IPL data too),
+      // so an unscoped name search can silently latch onto an unrelated
+      // same-named player from a different league/season entirely.
       if (!player && stat.name) {
-        const byName = getPlayerByName.get(stat.name);
-        if (byName) {
+        const inSquad = db.prepare(`
+          SELECT p.id FROM players p
+          JOIN match_squads ms ON ms.player_id = p.id
+          WHERE ms.match_id = ? AND LOWER(p.name) = LOWER(?)
+        `).get(matchId, stat.name);
+        if (inSquad) {
           if (hasExtId) {
             db.prepare('UPDATE players SET external_player_id = ? WHERE id = ?')
-              .run(extId, byName.id);
+              .run(extId, inSquad.id);
           }
-          player = byName;
+          player = inSquad;
         }
       }
 
-      // Last resort: check match_squads for player with same name in this match
+      // Last resort: unscoped global name match (this player isn't in the
+      // match's squad yet) — riskier, only used when the squad-scoped lookup
+      // above found nothing.
       if (!player) {
         if (stat.name) {
-          const inSquad = db.prepare(`
-            SELECT p.id FROM players p
-            JOIN match_squads ms ON ms.player_id = p.id
-            WHERE ms.match_id = ? AND LOWER(p.name) = LOWER(?)
-          `).get(matchId, stat.name);
-          if (inSquad) {
+          const byName = getPlayerByName.get(stat.name);
+          if (byName) {
             if (hasExtId) {
               db.prepare('UPDATE players SET external_player_id = ? WHERE id = ?')
-                .run(extId, inSquad.id);
+                .run(extId, byName.id);
             }
-            player = inSquad;
+            player = byName;
           }
         }
         if (!player) {
