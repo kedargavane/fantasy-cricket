@@ -544,6 +544,32 @@ router.post('/matches/:id/seed-squad', (req, res) => {
   return res.json({ success: true, count: players.length });
 });
 
+// ── POST /api/admin/matches/:id/playing-xi ────────────────────────────────────
+// Manually set Playing XI by external player IDs
+router.post('/matches/:id/playing-xi', (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+  const { externalPlayerIds } = req.body;
+
+  if (!Array.isArray(externalPlayerIds) || externalPlayerIds.length === 0) {
+    return res.status(400).json({ error: 'externalPlayerIds array is required' });
+  }
+
+  db.prepare('UPDATE match_squads SET is_playing_xi = 0 WHERE match_id = ?').run(matchId);
+
+  let updated = 0;
+  for (const uuid of externalPlayerIds) {
+    const player = db.prepare('SELECT id FROM players WHERE external_player_id = ?').get(uuid);
+    if (player) {
+      db.prepare('UPDATE match_squads SET is_playing_xi = 1 WHERE match_id = ? AND player_id = ?')
+        .run(matchId, player.id);
+      updated++;
+    }
+  }
+
+  return res.json({ success: true, updated });
+});
+
 // ── POST /api/admin/matches/:id/stats/override ────────────────────────────────
 // Manually override a player's stats (admin correction)
 router.post('/matches/:id/stats/override', (req, res) => {
