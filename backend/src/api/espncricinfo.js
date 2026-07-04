@@ -54,15 +54,6 @@ async function fetchESPNScorecard(eventId) {
   const matchStarted = comp?.status?.type?.id !== '1';
   const statusDesc = comp?.status?.type?.description || '';
 
-  // Score from competitors
-  const score = (comp?.competitors || []).map(c => ({
-    teamName: c.team?.displayName,
-    r: parseInt((c.score||'0').split('/')[0]) || 0,
-    w: parseInt((c.score||'0').split('/')[1]) || 10,
-    o: 0,
-    inning: c.team?.displayName + ' Inning 1'
-  }));
-
   // Build one innings skeleton per roster/team up front, so a bowler's
   // figures (credited to the batting team's innings) always have somewhere
   // to land regardless of processing order.
@@ -157,6 +148,37 @@ async function fetchESPNScorecard(eventId) {
     bowling: inn.bowling,
     catching: Object.values(inn.catching),
   }));
+
+  // Overs faced by a team = overs bowled against them, which is the sum of
+  // the OPPOSING bowlers' figures recorded in that team's own innings object
+  // (see the ownInning/opposingInning split above).
+  const oversFacedByTeam = {};
+  (data.rosters || []).forEach((roster, ri) => {
+    const teamName = roster.team?.displayName;
+    if (teamName) oversFacedByTeam[teamName] = (finalInnings[ri]?.bowling || [])
+      .reduce((sum, b) => sum + (b.o || 0), 0);
+  });
+
+  // ESPN's score string embeds live overs for the team currently batting,
+  // e.g. "52/3 (4.5/20 ov, target 191)" — but omits it once that innings is
+  // done (just "190/7"). Parse it when present; otherwise fall back to the
+  // bowling-sum above (still correct for a completed innings).
+  function parseOvers(scoreStr) {
+    const m = (scoreStr || '').match(/\(([\d.]+)\s*\/\s*\d+\s*ov/);
+    return m ? parseFloat(m[1]) : null;
+  }
+
+  const score = (comp?.competitors || []).map(c => {
+    const teamName = c.team?.displayName;
+    const overs = parseOvers(c.score) ?? (oversFacedByTeam[teamName] || 0);
+    return {
+      teamName,
+      r: parseInt((c.score||'0').split('/')[0]) || 0,
+      w: parseInt((c.score||'0').split('/')[1]) || 10,
+      o: overs,
+      inning: teamName + ' Inning 1'
+    };
+  });
 
   return {
     matchInfo: {
