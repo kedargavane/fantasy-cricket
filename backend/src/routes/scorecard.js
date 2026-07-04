@@ -98,10 +98,29 @@ function buildScorecard(matchId, { skipCache = false } = {}) {
     }
   }
 
-  return Object.values(innings).map(g => ({
-    ...g,
-    score: { r: g.runs, w: g.wickets, o: Math.round(g.overs * 10) / 10 },
-  }));
+  // Prefer matches.live_score for runs/wickets when available — it's the
+  // provider's own running total (includes extras, and isn't subject to the
+  // per-player breakdown lagging a wicket/run behind the live ticker), so
+  // it's more accurate than summing individual batting rows. Overs always
+  // come from the derived sum instead — ESPN's live_score never carries a
+  // real overs figure (always 0), only CricketData's does.
+  let liveScoreByTeam = {};
+  try {
+    for (const s of JSON.parse(match.live_score || '[]')) {
+      if (s.teamName) liveScoreByTeam[s.teamName] = s;
+    }
+  } catch {}
+
+  return Object.values(innings).map(g => {
+    const live  = g.battingTeam && liveScoreByTeam[g.battingTeam];
+    const overs = Math.round(g.overs * 10) / 10;
+    return {
+      ...g,
+      score: live
+        ? { r: live.r, w: live.w, o: overs }
+        : { r: g.runs, w: g.wickets, o: overs },
+    };
+  });
 }
 
 // GET /api/scorecard/:matchId — serve from cache, build from player_match_stats otherwise
