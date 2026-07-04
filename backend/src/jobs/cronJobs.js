@@ -20,7 +20,7 @@ function startCronJobs(io) {
     const in30min = new Date(now.getTime() + 30 * 60 * 1000);
 
     const activeMatches = db.prepare(`
-      SELECT id, sportmonks_fixture_id FROM matches
+      SELECT id, sportmonks_fixture_id, espn_event_id FROM matches
       WHERE (status = 'live' AND sportmonks_fixture_id LIKE '%-%')
       OR (status = 'upcoming' AND start_time <= ? AND sportmonks_fixture_id LIKE '%-%')
     `).all(in30min.toISOString());
@@ -99,7 +99,38 @@ function startCronJobs(io) {
         {
           console.log('[livePoller] Match', match.id, 'syncing...');
 
-          const result = await syncLiveMatch(match.id, match.sportmonks_fixture_id);
+          // Try CricketData first
+          let result = await syncLiveMatch(match.id, match.sportmonks_fixture_id);
+
+          // If CricketData failed and we have an ESPN event ID, fall back to ESPN
+          if (!result.success && match.espn_event_id) {
+            console.log('[livePoller] CricketData failed, trying ESPN for match', match.id);
+            try {
+              const { fetchESPNScorecard } = require('../api/espncricinfo');
+              const { upsertStats } = require('../api/syncService');
+              const matchRow = db.prepare('SELECT * FROM matches WHERE id = ?').get(match.id);
+
+              const { matchInfo, innings } = await fetchESPNScorecard(match.espn_event_id);
+              const playerStats = cricketdata.buildPlayerStatsFromScorecard(innings, matchRow.team_a, matchRow.team_b);
+              upsertStats(match.id, playerStats);
+              recomputeTeamPoints(match.id);
+
+              db.prepare("UPDATE matches SET live_score = ?, last_synced = datetime('now') WHERE id = ?")
+                .run(JSON.stringify(matchInfo.score), match.id);
+
+              result = { success: true, playersUpdated: playerStats.length };
+              console.log('[livePoller] ESPN sync successful for match', match.id, '-', playerStats.length, 'players');
+
+              if (matchInfo.trulyFinished) {
+                db.prepare("UPDATE matches SET status = 'completed' WHERE id = ?").run(match.id);
+                const { finaliseMatch } = require('../api/matchService');
+                finaliseMatch(match.id);
+              }
+            } catch (espnErr) {
+              console.error('[livePoller] ESPN sync failed for match', match.id, ':', espnErr.message);
+            }
+          }
+
           if (result.success) {
             io.to(`match:${match.id}`).emit('statsUpdate', {
               matchId: match.id, playersUpdated: result.playersUpdated,

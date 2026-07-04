@@ -489,6 +489,9 @@ function runMigrations(db) {
   // Migration: add series_id to matches (CricketData series UUID for this match)
   try { db.exec('ALTER TABLE matches ADD COLUMN series_id TEXT'); } catch {}
 
+  // Migration: add espn_event_id to matches (ESPN Cricinfo fallback sync)
+  try { db.exec('ALTER TABLE matches ADD COLUMN espn_event_id TEXT DEFAULT NULL'); } catch {}
+
   // Migration: add 'cancelled' to matches.status CHECK constraint (old DBs missing it)
   try {
     const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='matches'").get();
