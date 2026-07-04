@@ -29,6 +29,40 @@ function startCronJobs(io) {
 
     for (const match of activeMatches) {
       try {
+        // If match has an ESPN event ID, skip CricketData entirely and sync from ESPN.
+        // (fetchMatchInfo throws for matches CricketData has no fantasy data for.)
+        if (match.espn_event_id) {
+          try {
+            const { fetchESPNScorecard } = require('../api/espncricinfo');
+            const { upsertStats } = require('../api/syncService');
+            const matchRow = db.prepare('SELECT * FROM matches WHERE id = ?').get(match.id);
+
+            const { matchInfo, innings } = await fetchESPNScorecard(match.espn_event_id);
+            const playerStats = cricketdata.buildPlayerStatsFromScorecard(innings, matchRow.team_a, matchRow.team_b);
+            upsertStats(match.id, playerStats);
+            recomputeTeamPoints(match.id);
+
+            db.prepare("UPDATE matches SET live_score = ?, last_synced = datetime('now') WHERE id = ?")
+              .run(JSON.stringify(matchInfo.score), match.id);
+
+            console.log('[livePoller] ESPN sync match', match.id, '- players:', playerStats.length);
+
+            if (matchInfo.trulyFinished) {
+              db.prepare("UPDATE matches SET status = 'completed' WHERE id = ?").run(match.id);
+              const { finaliseMatch } = require('../api/matchService');
+              finaliseMatch(match.id);
+            }
+
+            io.to(`match:${match.id}`).emit('statsUpdate', {
+              matchId: match.id, playersUpdated: playerStats.length,
+              timestamp: new Date().toISOString(),
+            });
+          } catch (espnErr) {
+            console.error('[livePoller] ESPN error match', match.id, ':', espnErr.message);
+          }
+          continue; // skip CricketData entirely
+        }
+
         const info = await cricketdata.fetchMatchInfo(match.sportmonks_fixture_id);
 
         // ── Innings break notification ──────────────────────────────────────
@@ -99,38 +133,7 @@ function startCronJobs(io) {
         {
           console.log('[livePoller] Match', match.id, 'syncing...');
 
-          // Try CricketData first
-          let result = await syncLiveMatch(match.id, match.sportmonks_fixture_id);
-
-          // If CricketData failed and we have an ESPN event ID, fall back to ESPN
-          if (!result.success && match.espn_event_id) {
-            console.log('[livePoller] CricketData failed, trying ESPN for match', match.id);
-            try {
-              const { fetchESPNScorecard } = require('../api/espncricinfo');
-              const { upsertStats } = require('../api/syncService');
-              const matchRow = db.prepare('SELECT * FROM matches WHERE id = ?').get(match.id);
-
-              const { matchInfo, innings } = await fetchESPNScorecard(match.espn_event_id);
-              const playerStats = cricketdata.buildPlayerStatsFromScorecard(innings, matchRow.team_a, matchRow.team_b);
-              upsertStats(match.id, playerStats);
-              recomputeTeamPoints(match.id);
-
-              db.prepare("UPDATE matches SET live_score = ?, last_synced = datetime('now') WHERE id = ?")
-                .run(JSON.stringify(matchInfo.score), match.id);
-
-              result = { success: true, playersUpdated: playerStats.length };
-              console.log('[livePoller] ESPN sync successful for match', match.id, '-', playerStats.length, 'players');
-
-              if (matchInfo.trulyFinished) {
-                db.prepare("UPDATE matches SET status = 'completed' WHERE id = ?").run(match.id);
-                const { finaliseMatch } = require('../api/matchService');
-                finaliseMatch(match.id);
-              }
-            } catch (espnErr) {
-              console.error('[livePoller] ESPN sync failed for match', match.id, ':', espnErr.message);
-            }
-          }
-
+          const result = await syncLiveMatch(match.id, match.sportmonks_fixture_id);
           if (result.success) {
             io.to(`match:${match.id}`).emit('statsUpdate', {
               matchId: match.id, playersUpdated: result.playersUpdated,
