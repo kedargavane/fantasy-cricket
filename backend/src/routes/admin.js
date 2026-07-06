@@ -302,6 +302,63 @@ router.post('/matches/:id/sync-espn', async (req, res) => {
   }
 });
 
+// ── POST /api/admin/matches/:id/discover-espn-series ─────────────────────────
+// Given a match with an espn_event_id already set, find every other match in
+// the same ESPN series and auto-link espn_event_id for other matches in this
+// season that don't have one yet (matched by team names + closest start_time,
+// within 24h). ESPN has no cross-series search — this only finds siblings of
+// a series we've already linked one match from.
+router.post('/matches/:id/discover-espn-series', async (req, res) => {
+  const db      = getDb();
+  const matchId = parseInt(req.params.id, 10);
+
+  const seedMatch = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!seedMatch) return res.status(404).json({ error: 'Match not found' });
+  if (!seedMatch.espn_event_id) {
+    return res.status(400).json({ error: 'This match has no espn_event_id to seed discovery from' });
+  }
+
+  try {
+    const { discoverSeriesEvents } = require('../api/espncricinfo');
+    const events = await discoverSeriesEvents(seedMatch.espn_event_id);
+
+    const candidates = db.prepare(`
+      SELECT id, team_a, team_b, start_time FROM matches
+      WHERE season_id = ? AND (espn_event_id IS NULL OR espn_event_id = '')
+    `).all(seedMatch.season_id);
+
+    const linked = [];
+    for (const ev of events) {
+      if (!ev.teamA || !ev.teamB) continue;
+      const evTime = new Date(ev.date).getTime();
+      if (Number.isNaN(evTime)) continue;
+
+      let best = null, bestDiff = Infinity;
+      for (const c of candidates) {
+        const a = c.team_a.toLowerCase(), b = c.team_b.toLowerCase();
+        const evA = ev.teamA.toLowerCase(), evB = ev.teamB.toLowerCase();
+        const namesMatch =
+          (a.includes(evA) || evA.includes(a)) && (b.includes(evB) || evB.includes(b));
+        if (!namesMatch) continue;
+        const diff = Math.abs(new Date(c.start_time).getTime() - evTime);
+        if (diff < bestDiff) { bestDiff = diff; best = c; }
+      }
+
+      // Only link if the closest candidate is within 24h of ESPN's kickoff time
+      if (best && bestDiff <= 24 * 60 * 60 * 1000) {
+        db.prepare('UPDATE matches SET espn_event_id = ? WHERE id = ?').run(String(ev.eventId), best.id);
+        linked.push({ matchId: best.id, teamA: best.team_a, teamB: best.team_b, espnEventId: ev.eventId });
+        candidates.splice(candidates.indexOf(best), 1);
+      }
+    }
+
+    return res.json({ success: true, seriesEventsFound: events.length, linked });
+  } catch (err) {
+    console.error('[discover-espn-series]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/admin/matches/:id/process-swaps ────────────────────────────────
 // Force re-process auto-swaps for all teams in a match
 // Resets swap_processed_at so swaps run again with current XI data

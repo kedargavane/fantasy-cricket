@@ -195,4 +195,36 @@ async function fetchESPNScorecard(eventId) {
   };
 }
 
-module.exports = { fetchESPNScorecard };
+// Given one known ESPN event ID, find every other match in the same series.
+// ESPN's event summary reveals its own series/league id (header.leagues.id)
+// and season year — querying that league's scoreboard with dates=<year>
+// returns the whole series in one call. There's no cross-league search in
+// ESPN's API, so this only discovers siblings of an event we already know,
+// not brand-new series we've never linked anything from.
+async function discoverSeriesEvents(seedEventId) {
+  const res = await axios.get(BASE_URL, {
+    params: { contentorigin: 'espn', event: seedEventId, lang: 'en', region: 'in' },
+    headers: { 'User-Agent': 'Mozilla/5.0' },
+    timeout: 15000
+  });
+
+  const leagueId    = res.data.header?.league?.id;
+  const seasonYear   = res.data.header?.season?.year || new Date().getFullYear();
+  if (!leagueId) throw new Error('Could not determine ESPN series id from seed event');
+
+  const scoreRes = await axios.get(
+    `https://site.api.espn.com/apis/site/v2/sports/cricket/${leagueId}/scoreboard`,
+    {
+      params: { dates: seasonYear },
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      timeout: 15000
+    }
+  );
+
+  return (scoreRes.data.events || []).map(e => {
+    const [teamA, teamB] = (e.name || '').split(' v ').map(s => s && s.trim());
+    return { eventId: e.id, name: e.name, teamA, teamB, date: e.date };
+  });
+}
+
+module.exports = { fetchESPNScorecard, discoverSeriesEvents };

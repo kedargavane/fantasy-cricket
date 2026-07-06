@@ -157,6 +157,22 @@ function startCronJobs(io) {
   setInterval(pollLiveMatches, 30000);
   console.log('[cron] Live poller running every 30s via setInterval');
 
+  // Check whether a match has started, trying CricketData first and falling
+  // back to ESPN (when espnEventId is set) if CricketData has no coverage —
+  // same fallback pollLiveMatches uses, shared here for the promote/revert checks.
+  // Returns the raw score array so callers can apply their own hasScore rule.
+  async function checkMatchStarted(sportmonksFixtureId, espnEventId) {
+    try {
+      const info = await cricketdata.fetchMatchInfo(sportmonksFixtureId);
+      return { matchStarted: info.matchStarted, score: info.score };
+    } catch (err) {
+      if (!espnEventId) throw err;
+      const { fetchESPNScorecard } = require('../api/espncricinfo');
+      const { matchInfo } = await fetchESPNScorecard(espnEventId);
+      return { matchStarted: matchInfo.matchStarted, score: matchInfo.score };
+    }
+  }
+
   // ── 2. Live match detector — every minute ──────────────────────────────────
   // Polls match_info directly for upcoming matches within ±2h of start time.
   // Avoids relying on fetchLivescores() currentMatches feed (has delays).
@@ -179,7 +195,7 @@ function startCronJobs(io) {
 
     // Promote upcoming → live by polling match_info directly
     const candidates = db.prepare(`
-      SELECT id, sportmonks_fixture_id
+      SELECT id, sportmonks_fixture_id, espn_event_id
       FROM matches
       WHERE status = 'upcoming'
       AND start_time <= ?
@@ -189,10 +205,10 @@ function startCronJobs(io) {
 
     for (const match of candidates) {
       try {
-        const info = await cricketdata.fetchMatchInfo(match.sportmonks_fixture_id);
-        const hasScore = info.score && info.score.length > 0 && info.score[0].r > 0;
+        const { matchStarted, score } = await checkMatchStarted(match.sportmonks_fixture_id, match.espn_event_id);
+        const hasScore = score && score.length > 0 && score[0].r > 0;
 
-        if (info.matchStarted || hasScore) {
+        if (matchStarted || hasScore) {
           db.prepare("UPDATE matches SET status = 'live', went_live_at = datetime('now') WHERE id = ?")
             .run(match.id);
           console.log('[liveDetector] Match', match.id, 'is now live');
@@ -234,15 +250,15 @@ function startCronJobs(io) {
 
     // Revert live → upcoming if match_info confirms not started and no score
     const ourLiveMatches = db.prepare(
-      "SELECT id, sportmonks_fixture_id FROM matches WHERE status = 'live' AND sportmonks_fixture_id LIKE '%-%'"
+      "SELECT id, sportmonks_fixture_id, espn_event_id FROM matches WHERE status = 'live' AND sportmonks_fixture_id LIKE '%-%'"
     ).all();
 
     for (const match of ourLiveMatches) {
       try {
-        const info = await cricketdata.fetchMatchInfo(match.sportmonks_fixture_id);
-        const hasScore = info.score && info.score.length > 0;
+        const { matchStarted, score } = await checkMatchStarted(match.sportmonks_fixture_id, match.espn_event_id);
+        const hasScore = score && score.length > 0;
         const lastBalls = db.prepare('SELECT last_ball_count FROM matches WHERE id = ?').get(match.id);
-        if (!info.matchStarted && !hasScore && lastBalls.last_ball_count === 0) {
+        if (!matchStarted && !hasScore && lastBalls.last_ball_count === 0) {
           db.prepare("UPDATE matches SET status = 'upcoming' WHERE id = ?").run(match.id);
           console.log('[liveDetector] Match', match.id, 'reverted to upcoming');
         }
