@@ -193,6 +193,7 @@ function startCronJobs(io) {
     if (!upcomingSoon) return; // Nothing to detect
 
     // Promote upcoming → live by polling match_info directly
+    // (auto_status_disabled matches are admin-controlled only — skip them here)
     const candidates = db.prepare(`
       SELECT id, sportmonks_fixture_id, espn_event_id
       FROM matches
@@ -200,6 +201,7 @@ function startCronJobs(io) {
       AND start_time <= ?
       AND start_time >= ?
       AND sportmonks_fixture_id LIKE '%-%'
+      AND auto_status_disabled = 0
     `).all(twoHours.toISOString(), twoHoursAgo.toISOString());
 
     for (const match of candidates) {
@@ -249,7 +251,7 @@ function startCronJobs(io) {
 
     // Revert live → upcoming if match_info confirms not started and no score
     const ourLiveMatches = db.prepare(
-      "SELECT id, sportmonks_fixture_id, espn_event_id FROM matches WHERE status = 'live' AND sportmonks_fixture_id LIKE '%-%'"
+      "SELECT id, sportmonks_fixture_id, espn_event_id FROM matches WHERE status = 'live' AND sportmonks_fixture_id LIKE '%-%' AND auto_status_disabled = 0"
     ).all();
 
     for (const match of ourLiveMatches) {

@@ -431,13 +431,20 @@ router.post('/matches', (req, res) => {
 router.patch('/matches/:id', (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.id, 10);
-  const { status, startTime, entryUnits, team_a, team_b, venue_info, localteam_id, visitorteam_id, espnEventId } = req.body;
+  const { status, startTime, entryUnits, team_a, team_b, venue_info, localteam_id, visitorteam_id, espnEventId, autoStatusDisabled } = req.body;
 
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
   if (!match) return res.status(404).json({ error: 'Match not found' });
 
   if (espnEventId) {
     db.prepare('UPDATE matches SET espn_event_id = ? WHERE id = ?').run(String(espnEventId), matchId);
+  }
+  // autoStatusDisabled: when true, the live-detector cron never auto-promotes
+  // or auto-reverts this match's status — admin controls it manually via
+  // the `status` field on this same route.
+  if (autoStatusDisabled !== undefined) {
+    db.prepare('UPDATE matches SET auto_status_disabled = ? WHERE id = ?')
+      .run(autoStatusDisabled ? 1 : 0, matchId);
   }
   if (team_a) {
     db.prepare('UPDATE matches SET team_a = ? WHERE id = ?').run(team_a, matchId);

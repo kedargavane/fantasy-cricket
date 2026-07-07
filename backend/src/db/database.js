@@ -492,6 +492,11 @@ function runMigrations(db) {
   // Migration: add espn_event_id to matches (ESPN Cricinfo fallback sync)
   try { db.exec('ALTER TABLE matches ADD COLUMN espn_event_id TEXT DEFAULT NULL'); } catch {}
 
+  // Migration: add auto_status_disabled to matches — when set, the live
+  // detector cron never auto-promotes/reverts this match's status; an admin
+  // must flip status manually (e.g. via PATCH /matches/:id)
+  try { db.exec('ALTER TABLE matches ADD COLUMN auto_status_disabled INTEGER NOT NULL DEFAULT 0'); } catch {}
+
   // Migration: add 'cancelled' to matches.status CHECK constraint (old DBs missing it)
   try {
     const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='matches'").get();
