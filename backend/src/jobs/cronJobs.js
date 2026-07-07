@@ -157,20 +157,19 @@ function startCronJobs(io) {
   setInterval(pollLiveMatches, 30000);
   console.log('[cron] Live poller running every 30s via setInterval');
 
-  // Check whether a match has started, trying CricketData first and falling
-  // back to ESPN (when espnEventId is set) if CricketData has no coverage —
-  // same fallback pollLiveMatches uses, shared here for the promote/revert checks.
+  // Check whether a match has started. Matches with espn_event_id set skip
+  // CricketData entirely (same rule pollLiveMatches uses for scoring — once a
+  // match is linked to ESPN, ESPN is the sole source for it, not a fallback).
+  // Matches with no espn_event_id use CricketData as before.
   // Returns the raw score array so callers can apply their own hasScore rule.
   async function checkMatchStarted(sportmonksFixtureId, espnEventId) {
-    try {
-      const info = await cricketdata.fetchMatchInfo(sportmonksFixtureId);
-      return { matchStarted: info.matchStarted, score: info.score };
-    } catch (err) {
-      if (!espnEventId) throw err;
+    if (espnEventId) {
       const { fetchESPNScorecard } = require('../api/espncricinfo');
       const { matchInfo } = await fetchESPNScorecard(espnEventId);
       return { matchStarted: matchInfo.matchStarted, score: matchInfo.score };
     }
+    const info = await cricketdata.fetchMatchInfo(sportmonksFixtureId);
+    return { matchStarted: info.matchStarted, score: info.score };
   }
 
   // ── 2. Live match detector — every minute ──────────────────────────────────
