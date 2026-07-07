@@ -242,8 +242,12 @@ function validateTeamInput({ matchId, playerIds, captainId, viceCaptainId, backu
   if (!matchId)                              return 'matchId is required';
   if (!Array.isArray(playerIds) || playerIds.length !== 11)
                                              return 'playerIds must be an array of exactly 11 players';
-  if (!Array.isArray(backupIds) || backupIds.length !== 2)
-                                             return 'backupIds must be an array of exactly 2 players';
+  // 0-2 backups: some matches have no real reserve pool to pick from (e.g.
+  // when the Playing XI was manually confirmed and there's no curated
+  // non-XI squad list) — swapEngine already pads missing backups with a
+  // no-op sentinel, so fewer than 2 is safe.
+  if (!Array.isArray(backupIds) || backupIds.length > 2)
+                                             return 'backupIds must be an array of at most 2 players';
   if (!captainId)                            return 'captainId is required';
   if (!viceCaptainId)                        return 'viceCaptainId is required';
   return null;
