@@ -684,7 +684,11 @@ router.post('/matches/:id/seed-squad', (req, res) => {
 });
 
 // ── POST /api/admin/matches/:id/playing-xi ────────────────────────────────────
-// Manually set Playing XI by external player IDs
+// Manually set Playing XI by external player IDs.
+// Also flips auto_xi_disabled so the Playing XI poller (CricketData-based)
+// never overwrites this manual confirmation — CricketData's hasSquad can
+// stay true for the full touring squad well before the real XI is announced,
+// and the poller has no way to distinguish the two.
 router.post('/matches/:id/playing-xi', (req, res) => {
   const db      = getDb();
   const matchId = parseInt(req.params.id, 10);
@@ -705,6 +709,8 @@ router.post('/matches/:id/playing-xi', (req, res) => {
       updated++;
     }
   }
+
+  db.prepare('UPDATE matches SET auto_xi_disabled = 1 WHERE id = ?').run(matchId);
 
   return res.json({ success: true, updated });
 });

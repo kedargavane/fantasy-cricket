@@ -278,12 +278,18 @@ function startCronJobs(io) {
     const now            = new Date();
     const twentyFourHours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
+    // auto_xi_disabled: skip matches where an admin has already manually
+    // confirmed the XI — CricketData's hasSquad can stay true for the full
+    // touring squad well before the real starting XI is announced, and this
+    // poller has no way to tell the two apart, so it would otherwise
+    // overwrite a correct manual entry with the full squad every 2 minutes.
     const upcoming = db.prepare(`
       SELECT id, sportmonks_fixture_id, team_a, team_b
       FROM matches
       WHERE status = 'upcoming'
       AND sportmonks_fixture_id IS NOT NULL
       AND start_time <= ?
+      AND auto_xi_disabled = 0
     `).all(twentyFourHours.toISOString());
 
     for (const match of upcoming) {

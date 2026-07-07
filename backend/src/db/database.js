@@ -497,6 +497,11 @@ function runMigrations(db) {
   // must flip status manually (e.g. via PATCH /matches/:id)
   try { db.exec('ALTER TABLE matches ADD COLUMN auto_status_disabled INTEGER NOT NULL DEFAULT 0'); } catch {}
 
+  // Migration: add auto_xi_disabled to matches — when set, the Playing XI
+  // poller never auto-syncs this match's squad; an admin has confirmed the
+  // XI manually (e.g. via POST /matches/:id/playing-xi)
+  try { db.exec('ALTER TABLE matches ADD COLUMN auto_xi_disabled INTEGER NOT NULL DEFAULT 0'); } catch {}
+
   // Migration: add 'cancelled' to matches.status CHECK constraint (old DBs missing it)
   try {
     const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='matches'").get();
