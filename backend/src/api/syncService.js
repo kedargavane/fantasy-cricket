@@ -304,9 +304,15 @@ function recomputeTeamPoints(matchId) {
         if (!stats) continue;
         statsFound++;
         const role = player_id === captainId ? 'captain' : player_id === vcId ? 'vice_captain' : 'normal';
+        // Once swaps are processed, activePlayers can still include a main
+        // player who isn't actually in the XI (e.g. no backup was available
+        // to swap them out for) — always check the real flag rather than
+        // assuming anyone left in this list must be playing.
+        const squadEntry = getSquadEntry.get(matchId, player_id);
+        const isPlayingXi = squadEntry ? squadEntry.is_playing_xi === 1 : false;
         const { total } = calculateFantasyPoints(
           {
-            isPlayingXi:   true,
+            isPlayingXi,
             runs:          stats.runs,
             ballsFaced:    stats.balls_faced,
             fours:         stats.fours,
