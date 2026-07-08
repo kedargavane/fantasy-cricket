@@ -6,6 +6,13 @@ import './AdminPages.css';
 
 const TABS = ['Details', 'Set Squad', 'Finalise'];
 
+function matchTeamName(playerTeam, matchTeam) {
+  if (!playerTeam || !matchTeam) return false;
+  const p = playerTeam.toLowerCase().trim();
+  const m = matchTeam.toLowerCase().trim();
+  return p === m || p.includes(m) || m.includes(p);
+}
+
 export default function AdminMatchPage() {
   const { matchId } = useParams();
   const navigate    = useNavigate();
@@ -14,6 +21,8 @@ export default function AdminMatchPage() {
   const [tab, setTab]       = useState(0);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg]       = useState({ type: '', text: '' });
+  const [selectedXi, setSelectedXi] = useState(new Set());
+  const [savingXi, setSavingXi]     = useState(false);
 
   useEffect(() => { loadMatch(); }, [matchId]);
 
@@ -26,9 +35,39 @@ export default function AdminMatchPage() {
       // Find this match from the admin list or match detail
       const matchRes = await api.get(`/matches/${matchId}`);
       setMatch(matchRes.data.match);
-      setSquad(sRes.data.squad || []);
+      const loadedSquad = sRes.data.squad || [];
+      setSquad(loadedSquad);
+      setSelectedXi(new Set(loadedSquad.filter(p => p.is_playing_xi).map(p => p.id)));
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  }
+
+  function toggleXi(playerId) {
+    setSelectedXi(prev => {
+      const next = new Set(prev);
+      if (next.has(playerId)) next.delete(playerId);
+      else next.add(playerId);
+      return next;
+    });
+  }
+
+  async function savePlayingXi() {
+    const externalPlayerIds = squad
+      .filter(p => selectedXi.has(p.id))
+      .map(p => p.external_player_id)
+      .filter(Boolean);
+
+    setSavingXi(true);
+    try {
+      const res = await api.post(`/admin/matches/${matchId}/playing-xi`, { externalPlayerIds });
+      flash('success', `Playing XI saved — ${res.data.updated} players confirmed`);
+      const sRes = await api.get(`/matches/${matchId}/squad`);
+      setSquad(sRes.data.squad || []);
+    } catch (err) {
+      flash('error', err.response?.data?.error || 'Failed to save Playing XI');
+    } finally {
+      setSavingXi(false);
+    }
   }
 
   function flash(type, text) {
@@ -87,6 +126,19 @@ export default function AdminMatchPage() {
   const xiPlayers     = squad.filter(p => p.is_playing_xi);
   const squadPlayers  = squad.filter(p => !p.is_playing_xi);
 
+  // Group the full squad by team for the picker, using the same fuzzy match
+  // as the team-builder page (Sportmonks/CricketData team labels can vary)
+  let squadA = squad.filter(p => p.team === match.team_a);
+  let squadB = squad.filter(p => p.team === match.team_b);
+  if (squadA.length === 0 || squadB.length === 0) {
+    squadA = squad.filter(p => matchTeamName(p.team, match.team_a));
+    squadB = squad.filter(p => matchTeamName(p.team, match.team_b));
+  }
+  const selectedCountA = squadA.filter(p => selectedXi.has(p.id)).length;
+  const selectedCountB = squadB.filter(p => selectedXi.has(p.id)).length;
+  const xiChanged = selectedXi.size !== xiPlayers.length ||
+    xiPlayers.some(p => !selectedXi.has(p.id));
+
   return (
     <div className="page admin-page">
       <div className="admin-header">
@@ -136,48 +188,42 @@ export default function AdminMatchPage() {
         {/* ── TAB 1: Set Squad ── */}
         {tab === 1 && (
           <div className="flex-col gap-4">
-            <div className="flex gap-2">
+            <div className="flex gap-2" style={{alignItems:'center', flexWrap:'wrap'}}>
               <button className="btn btn-secondary btn-sm" onClick={syncSquad}>
                 ↻ Sync from Sportmonks
               </button>
-              <span className="text-muted text-sm" style={{alignSelf:'center'}}>
-                {xiPlayers.length}/12 Playing XI set
-              </span>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={savePlayingXi}
+                disabled={savingXi || !xiChanged || squad.length === 0}
+              >
+                {savingXi ? 'Saving…' : 'Save Playing XI'}
+              </button>
+              {xiChanged && (
+                <span className="text-sm" style={{color:'var(--accent-gold)'}}>Unsaved changes</span>
+              )}
             </div>
 
-            {xiPlayers.length > 0 && (
-              <>
-                <p className="admin-list-label">Playing XI ({xiPlayers.length})</p>
-                {xiPlayers.map(p => (
-                  <div key={p.id} className="admin-player-row card mb-1">
-                    <div className="flex-col flex-1">
-                      <span className="text-sm font-bold">{p.name}</span>
-                      <span className="text-muted text-sm">{p.team} · {p.role || 'unknown'}</span>
-                    </div>
-                    <span className="badge badge-green">XI</span>
-                  </div>
-                ))}
-              </>
-            )}
-
-            {squadPlayers.length > 0 && (
-              <>
-                <p className="admin-list-label mt-2">Squad — not confirmed ({squadPlayers.length})</p>
-                {squadPlayers.map(p => (
-                  <div key={p.id} className="admin-player-row card mb-1">
-                    <div className="flex-col flex-1">
-                      <span className="text-sm">{p.name}</span>
-                      <span className="text-muted text-sm">{p.team}</span>
-                    </div>
-                    <span className="badge badge-muted">Squad</span>
-                  </div>
-                ))}
-              </>
-            )}
-
-            {squad.length === 0 && (
+            {squad.length === 0 ? (
               <div className="card text-center text-secondary">
                 No squad loaded. Click "Sync from Sportmonks" to fetch.
+              </div>
+            ) : (
+              <div className="admin-xi-columns" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                <SquadColumn
+                  teamName={match.team_a}
+                  players={squadA}
+                  selectedCount={selectedCountA}
+                  selectedXi={selectedXi}
+                  onToggle={toggleXi}
+                />
+                <SquadColumn
+                  teamName={match.team_b}
+                  players={squadB}
+                  selectedCount={selectedCountB}
+                  selectedXi={selectedXi}
+                  onToggle={toggleXi}
+                />
               </div>
             )}
           </div>
@@ -253,6 +299,45 @@ function CheckItem({ ok, label }) {
     <div className="check-item">
       <span className={ok ? 'text-green' : 'text-red'}>{ok ? '✓' : '✗'}</span>
       <span className={`text-sm ${ok ? '' : 'text-secondary'}`}>{label}</span>
+    </div>
+  );
+}
+
+function SquadColumn({ teamName, players, selectedCount, selectedXi, onToggle }) {
+  return (
+    <div className="flex-col gap-2">
+      <p className="admin-list-label">
+        {teamName} — <span className={selectedCount === 11 ? 'text-green' : 'text-secondary'}>{selectedCount}/11</span>
+      </p>
+      {players.length === 0 && (
+        <div className="card text-center text-secondary text-sm">No players synced for this team</div>
+      )}
+      {players.map(p => {
+        const checked = selectedXi.has(p.id);
+        return (
+          <div
+            key={p.id}
+            className="admin-player-row card mb-1"
+            style={{cursor:'pointer'}}
+            onClick={() => onToggle(p.id)}
+          >
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => onToggle(p.id)}
+              onClick={e => e.stopPropagation()}
+              style={{marginRight:8}}
+            />
+            <div className="flex-col flex-1">
+              <span className={`text-sm ${checked ? 'font-bold' : ''}`}>{p.name}</span>
+              <span className="text-muted text-sm">{p.role || 'unknown'}</span>
+            </div>
+            <span className={`badge ${checked ? 'badge-green' : 'badge-muted'}`}>
+              {checked ? 'XI' : 'Squad'}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
