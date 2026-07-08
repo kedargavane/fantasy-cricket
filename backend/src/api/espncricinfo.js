@@ -168,23 +168,37 @@ async function fetchESPNScorecard(eventId) {
     return m ? parseFloat(m[1]) : null;
   }
 
-  // `|| fallback` treats a genuinely-parsed 0 as falsy (e.g. "0/0 (0.4/20 ov)"
-  // — 0 wickets down, in progress — was showing as "10", i.e. all out).
-  // Only fall back when the parse actually failed (NaN), such as a team
-  // that hasn't batted yet (empty score string).
   function parseIntOr(str, fallback) {
     const n = parseInt(str, 10);
     return Number.isNaN(n) ? fallback : n;
   }
 
+  // ESPN's score string has three distinct shapes:
+  //  - "0/0 (0.4/20 ov)"                    — in progress, R/W before the parens
+  //  - "201/7"                              — innings complete, not all out
+  //  - "76 (11.4/20 ov, target 202)"        — innings complete, ALL OUT — no
+  //    "/W" before the parens at all, since the naive split('/') would
+  //    otherwise grab the "20" overs-denominator from inside the parens as
+  //    the wicket count (a genuinely wrong parse, not just a bad fallback).
+  // Always strip the parenthetical detail first, then decide from what's left.
+  function parseRunsWickets(scoreStr) {
+    const mainPart = (scoreStr || '').split('(')[0].trim();
+    if (!mainPart) return { r: 0, w: 0 }; // team hasn't batted yet
+    if (mainPart.includes('/')) {
+      const [rStr, wStr] = mainPart.split('/');
+      return { r: parseIntOr(rStr, 0), w: parseIntOr(wStr, 0) };
+    }
+    return { r: parseIntOr(mainPart, 0), w: 10 }; // no slash = all out
+  }
+
   const score = (comp?.competitors || []).map(c => {
     const teamName = c.team?.displayName;
     const overs = parseOvers(c.score) ?? (oversFacedByTeam[teamName] || 0);
-    const parts = (c.score || '').split('/');
+    const { r, w } = parseRunsWickets(c.score);
     return {
       teamName,
-      r: parseIntOr(parts[0], 0),
-      w: parseIntOr(parts[1], 0),
+      r,
+      w,
       o: overs,
       inning: teamName + ' Inning 1'
     };
