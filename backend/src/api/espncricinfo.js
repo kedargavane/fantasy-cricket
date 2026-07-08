@@ -50,8 +50,13 @@ async function fetchESPNScorecard(eventId) {
 
   const data = res.data;
   const comp = data.header?.competitions?.[0];
-  const matchEnded = comp?.status?.type?.completed === true;
-  const matchStarted = comp?.status?.type?.id !== '1';
+  // status.type.state is the reliable phase signal: "pre" / "in" / "post".
+  // type.id stays "0" for BOTH scheduled and live, so it can't distinguish
+  // started-vs-not; and type.completed doesn't exist in this endpoint's
+  // response at all (was always undefined, so matchEnded here never fired).
+  const state = comp?.status?.type?.state;
+  const matchEnded = state === 'post';
+  const matchStarted = state === 'in' || state === 'post';
   const statusDesc = comp?.status?.type?.description || '';
 
   // Build one innings skeleton per roster/team up front, so a bowler's
