@@ -356,6 +356,36 @@ function recomputeTeamPoints(matchId) {
   } catch {}
 }
 
+// ── Award +4 to confirmed XI players who don't have a stats row yet ─────────
+// Shared by every sync path (CricketData, ESPN) — a confirmed Playing XI
+// player should score the baseline bonus from the moment their team goes
+// live, not only once they actually appear in a provider's batting/bowling
+// scorecard (which can be minutes into the innings, or never for a bowler
+// who doesn't bowl before the innings ends).
+function addXiPlayingBonus(matchId) {
+  const db = getDb();
+  const xiPlayers = db.prepare(
+    'SELECT player_id FROM match_squads WHERE match_id = ? AND is_playing_xi = 1'
+  ).all(matchId);
+  const hasStats    = db.prepare('SELECT player_id FROM player_match_stats WHERE match_id = ?').all(matchId).map(r => r.player_id);
+  const hasStatsSet = new Set(hasStats);
+
+  const insertXiBonus = db.prepare(`
+    INSERT INTO player_match_stats
+      (match_id, player_id, runs, balls_faced, fours, sixes, dismissal_type,
+       overs_bowled, wickets, runs_conceded, maidens,
+       catches, stumpings, run_outs, fantasy_points, updated_at)
+    VALUES (?, ?, 0, 0, 0, 0, 'dnb', 0, 0, 0, 0, 0, 0, 0, 4, datetime('now'))
+    ON CONFLICT(match_id, player_id) DO NOTHING
+  `);
+  const addXiBonuses = db.transaction(() => {
+    for (const { player_id } of xiPlayers) {
+      if (!hasStatsSet.has(player_id)) insertXiBonus.run(matchId, player_id);
+    }
+  });
+  addXiBonuses();
+}
+
 // ── Sync live match from CricketData scorecard ───────────────────────────────
 async function syncLiveMatch(matchId, externalMatchId) {
   const db = getDb();
@@ -368,28 +398,7 @@ async function syncLiveMatch(matchId, externalMatchId) {
     }
 
     upsertStats(matchId, playerStats);
-
-    // Give +4 to all confirmed XI players not yet in scorecard
-    const xiPlayers = db.prepare(
-      'SELECT player_id FROM match_squads WHERE match_id = ? AND is_playing_xi = 1'
-    ).all(matchId);
-    const hasStats    = db.prepare('SELECT player_id FROM player_match_stats WHERE match_id = ?').all(matchId).map(r => r.player_id);
-    const hasStatsSet = new Set(hasStats);
-
-    const insertXiBonus = db.prepare(`
-      INSERT INTO player_match_stats
-        (match_id, player_id, runs, balls_faced, fours, sixes, dismissal_type,
-         overs_bowled, wickets, runs_conceded, maidens,
-         catches, stumpings, run_outs, fantasy_points, updated_at)
-      VALUES (?, ?, 0, 0, 0, 0, 'dnb', 0, 0, 0, 0, 0, 0, 0, 4, datetime('now'))
-      ON CONFLICT(match_id, player_id) DO NOTHING
-    `);
-    const addXiBonuses = db.transaction(() => {
-      for (const { player_id } of xiPlayers) {
-        if (!hasStatsSet.has(player_id)) insertXiBonus.run(matchId, player_id);
-      }
-    });
-    addXiBonuses();
+    addXiPlayingBonus(matchId);
 
     recomputeTeamPoints(matchId);
 
@@ -467,6 +476,7 @@ module.exports = {
   upsertSquad,
   syncPlayingXi,
   upsertStats,
+  addXiPlayingBonus,
   recomputeTeamPoints,
   syncLiveMatch,
 };

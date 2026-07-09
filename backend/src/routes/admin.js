@@ -283,12 +283,13 @@ router.post('/matches/:id/sync-espn', async (req, res) => {
 
   try {
     const { fetchESPNScorecard } = require('../api/espncricinfo');
-    const { upsertStats, recomputeTeamPoints } = require('../api/syncService');
+    const { upsertStats, addXiPlayingBonus, recomputeTeamPoints } = require('../api/syncService');
 
     const { matchInfo, innings } = await fetchESPNScorecard(eventId);
 
     const playerStats = cricketdata.buildPlayerStatsFromScorecard(innings, match.team_a, match.team_b);
     upsertStats(matchId, playerStats);
+    addXiPlayingBonus(matchId);
     recomputeTeamPoints(matchId);
 
     // Update live score

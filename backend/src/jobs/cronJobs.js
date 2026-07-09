@@ -34,12 +34,13 @@ function startCronJobs(io) {
         if (match.espn_event_id) {
           try {
             const { fetchESPNScorecard } = require('../api/espncricinfo');
-            const { upsertStats } = require('../api/syncService');
+            const { upsertStats, addXiPlayingBonus } = require('../api/syncService');
             const matchRow = db.prepare('SELECT * FROM matches WHERE id = ?').get(match.id);
 
             const { matchInfo, innings } = await fetchESPNScorecard(match.espn_event_id);
             const playerStats = cricketdata.buildPlayerStatsFromScorecard(innings, matchRow.team_a, matchRow.team_b);
             upsertStats(match.id, playerStats);
+            addXiPlayingBonus(match.id);
             recomputeTeamPoints(match.id);
 
             db.prepare("UPDATE matches SET live_score = ?, last_synced = datetime('now') WHERE id = ?")
