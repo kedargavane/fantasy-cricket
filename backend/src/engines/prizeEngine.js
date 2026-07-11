@@ -7,7 +7,8 @@
  *  - Entry: entryUnits per participant (default 300)
  *  - Total pool = participants * entryUnits
  *  - 0–1 participants  → no prizes, pool carries over (returned as carryOver)
- *  - 2–4 participants  → 2 winners: 60% / 40%
+ *  - 2 participants    → winner-take-all: 100% / 0%
+ *  - 3–4 participants  → 2 winners: 60% / 40%
  *  - 5+ participants   → 3 winners: 50% / 30% / 20%
  *  - Ties: merge tied positions' prize money and split equally
  *  - Net units = prize won - entryUnits
@@ -17,7 +18,7 @@
  *
  * @returns {object} {
  *   totalPool,
- *   distributionRule,   // '2-winner' | '3-winner' | 'no-prize'
+ *   distributionRule,   // 'winner-take-all' | '2-winner' | '3-winner' | 'no-prize'
  *   prizes,             // Array of { userId, rank, grossUnits, netUnits, fantasyPoints }
  *   carryOver,          // units carried over if no-prize scenario
  *   participantCount,
@@ -44,12 +45,20 @@ function distributePrizes(rankedEntries, entryUnits = 300) {
     };
   }
 
-  // Determine split percentages
-  const percentages = participantCount >= 5
-    ? [0.50, 0.30, 0.20]
-    : [0.60, 0.40];
-
-  const distributionRule = participantCount >= 5 ? '3-winner' : '2-winner';
+  // Determine split percentages — a 2-participant match is head-to-head,
+  // so it's winner-take-all rather than the softer 60/40 split used for
+  // 3-4 participants (where there are genuine non-winning positions).
+  let percentages, distributionRule;
+  if (participantCount === 2) {
+    percentages = [1.0];
+    distributionRule = 'winner-take-all';
+  } else if (participantCount >= 5) {
+    percentages = [0.50, 0.30, 0.20];
+    distributionRule = '3-winner';
+  } else {
+    percentages = [0.60, 0.40];
+    distributionRule = '2-winner';
+  }
 
   // Assign raw ranks (ties get the same rank)
   const ranked = assignRanks(rankedEntries);
