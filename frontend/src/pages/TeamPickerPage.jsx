@@ -109,13 +109,18 @@ export default function TeamPickerPage() {
         api.get(`/matches/${matchId}/squad`),
       ]);
       setMatch(mRes.data.match);
-      // auto_xi_disabled means an admin manually confirmed the Playing XI for
-      // this match (bypassing an unreliable/incomplete auto squad sync) — in
-      // that case the non-XI rows are just noise (e.g. a full touring squad),
-      // not a real reserve pool, so skip the backup-pick feature entirely.
-      // (Submitting with 0-2 backups is already supported by the backend.)
+      // auto_xi_disabled means an admin has taken manual control of this
+      // match's squad/XI (bypassing an unreliable/incomplete auto sync) —
+      // but that can mean two different states: XI already confirmed (hide
+      // the non-XI noise, no backup pool) or just a curated squad pool with
+      // no XI decided yet (show everyone — there's nothing to filter down
+      // to). Only apply the XI-only filter once at least one player is
+      // actually marked as confirmed XI.
       const fullSquad = sRes.data.squad || [];
-      setSquad(mRes.data.match?.auto_xi_disabled ? fullSquad.filter(p => p.is_playing_xi) : fullSquad);
+      const hasConfirmedXi = fullSquad.some(p => p.is_playing_xi);
+      setSquad(mRes.data.match?.auto_xi_disabled && hasConfirmedXi
+        ? fullSquad.filter(p => p.is_playing_xi)
+        : fullSquad);
       try {
         const tRes = await api.get(`/teams/match/${matchId}`);
         const t = tRes.data.team;
