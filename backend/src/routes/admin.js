@@ -77,7 +77,7 @@ router.post('/seasons', (req, res) => {
 // ── PATCH /api/admin/seasons/:id ──────────────────────────────────────────────
 router.patch('/seasons/:id', (req, res) => {
   const db = getDb();
-  const { status, maxPlayers, inviteCode, seriesIds } = req.body;
+  const { name, status, maxPlayers, inviteCode, seriesIds } = req.body;
 
   if (status && !['upcoming','active','completed'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status' });
@@ -85,6 +85,7 @@ router.patch('/seasons/:id', (req, res) => {
 
   const fields = [];
   const values = [];
+  if (name)                    { fields.push('name = ?');        values.push(name); }
   if (status)                  { fields.push('status = ?');      values.push(status); }
   if (maxPlayers)              { fields.push('max_players = ?'); values.push(maxPlayers); }
   if (inviteCode)              { fields.push('invite_code = ?'); values.push(inviteCode); }
