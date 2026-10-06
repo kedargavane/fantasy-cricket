@@ -43,8 +43,21 @@ function startCronJobs(io) {
             addXiPlayingBonus(match.id);
             recomputeTeamPoints(match.id);
 
-            db.prepare("UPDATE matches SET live_score = ?, last_synced = datetime('now') WHERE id = ?")
-              .run(JSON.stringify(matchInfo.score), match.id);
+            // innings1_score/innings2_score feed venue history (avg/high/low
+            // score at a stadium) — index-based since ESPN's inning field is
+            // a string label, not a number, same format as the CricketData path.
+            const espnInnings = matchInfo.score || [];
+            const espnInn1 = espnInnings[0] || null;
+            const espnInn2 = espnInnings[1] || null;
+            const espnInn1Score = espnInn1 ? `${espnInn1.r}/${espnInn1.w} (${espnInn1.o} ov)` : null;
+            const espnInn2Score = espnInn2 ? `${espnInn2.r}/${espnInn2.w} (${espnInn2.o} ov)` : null;
+
+            db.prepare(`
+              UPDATE matches SET live_score = ?, last_synced = datetime('now'),
+                innings1_score = COALESCE(?, innings1_score),
+                innings2_score = COALESCE(?, innings2_score)
+              WHERE id = ?
+            `).run(JSON.stringify(matchInfo.score), espnInn1Score, espnInn2Score, match.id);
 
             console.log('[livePoller] ESPN sync match', match.id, '- players:', playerStats.length);
 

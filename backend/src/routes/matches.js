@@ -254,7 +254,10 @@ router.get('/:id/rank-snapshots', requireAuth, (req, res) => {
 });
 
 // ── GET /api/matches/:id/venue-history ───────────────────────────────────────
-// Returns last 5 completed matches at the same venue this season
+// Returns the last 5 completed matches of the same format (T20/ODI/Test) at
+// this venue — universal across seasons, since a stadium's scoring
+// tendencies don't reset just because a new season started. Scoped by
+// format because innings totals aren't comparable across T20/ODI/Test.
 router.get('/:id/venue-history', requireAuth, (req, res) => {
   const db = getDb();
   const matchId = parseInt(req.params.id, 10);
@@ -274,15 +277,15 @@ router.get('/:id/venue-history', requireAuth, (req, res) => {
   const stadiumName = venueKey.split(',')[0].trim();
 
   const history = db.prepare(`
-    SELECT id, team_a, team_b, start_time, venue_info, innings1_score, innings2_score
+    SELECT id, team_a, team_b, start_time, venue_info, venue, innings1_score, innings2_score
     FROM matches
-    WHERE season_id = ?
-      AND status = 'completed'
+    WHERE status = 'completed'
+      AND match_type = ?
       AND id != ?
-      AND venue_info LIKE ?
+      AND COALESCE(venue_info, venue) LIKE ?
     ORDER BY start_time DESC
     LIMIT 5
-  `).all(match.season_id, matchId, `%${stadiumName}%`);
+  `).all(match.match_type, matchId, `%${stadiumName}%`);
 
   // Compute avg, high, low from stored innings scores
   const allRuns = history.flatMap(m => {

@@ -419,9 +419,10 @@ async function syncLiveMatch(matchId, externalMatchId) {
 
     db.prepare(`
       UPDATE matches SET status = ?, last_synced = datetime('now'), live_score = ?,
+        innings1_score = COALESCE(?, innings1_score),
         innings2_score = COALESCE(?, innings2_score)
       WHERE id = ?
-    `).run(newStatus, scoreStr, inn2Score, matchId);
+    `).run(newStatus, scoreStr, inn1Score, inn2Score, matchId);
 
     console.log(`[syncLiveMatch] matchId=${matchId}: ${playerStats.length} players, status=${newStatus}`);
     return { success: true, status: newStatus, playersUpdated: playerStats.length };
